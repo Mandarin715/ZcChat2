@@ -51,6 +51,8 @@ void SettingChild_Vits::on_pushButton_VSA_Set_clicked()
     QJsonArray arr = config.value("vits/ModelAndSpeakerList").toArray();
     for (const QJsonValue &val : arr)
         list.append(val.toString());
+    if (ui->listView_ModelAndSpeakerlList->model())
+        ui->listView_ModelAndSpeakerlList->model()->deleteLater();
     QStringListModel *model = new QStringListModel(list, ui->listView_ModelAndSpeakerlList);
     ui->listView_ModelAndSpeakerlList->setModel(model);
 }
@@ -104,6 +106,8 @@ void SettingChild_Vits::on_pushButton_LoadModelAndSpeakerlList_clicked()
                         list.append(displayText);
                     }
                 }
+                if (ui->listView_ModelAndSpeakerlList->model())
+                    ui->listView_ModelAndSpeakerlList->model()->deleteLater();
                 QStringListModel *model = new QStringListModel(list, ui->listView_ModelAndSpeakerlList);
                 ui->listView_ModelAndSpeakerlList->setModel(model);
                 reply->deleteLater();

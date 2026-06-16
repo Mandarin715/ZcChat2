@@ -25,3 +25,9 @@ void historychild::on_pushButton_jump_clicked()
 {
     emit jumpRequested(m_historyIndex);
 }
+
+/*请求删除*/
+void historychild::on_pushButton_delete_clicked()
+{
+    emit deleteRequested(m_historyIndex);
+}

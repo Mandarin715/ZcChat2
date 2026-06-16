@@ -55,6 +55,38 @@ QPushButton:pressed {
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="pushButton_delete">
+       <property name="toolTip">
+        <string>删除这条记录</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+}
+
+QPushButton:hover {
+    border: 2px solid #CCCCCC;
+}
+
+QPushButton:pressed {
+    border: 2px solid #AAAAAA;
+}
+</string>
+       </property>
+        <property name="text">
+         <string>✕</string>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>16</width>
+         <height>16</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="pushButton_jump">
        <property name="toolTip">
         <string>回溯到这条记录</string>

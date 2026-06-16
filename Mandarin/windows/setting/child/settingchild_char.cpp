@@ -12,7 +12,6 @@
 #include "ElaText.h"
 
 #include <QComboBox>
-#include <QDebug>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>

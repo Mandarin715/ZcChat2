@@ -48,6 +48,7 @@ class Dialog : public QWidget
     void on_pushButton_input_released();
     void on_checkBox_autoInput_toggled(bool checked);
     void rewindToHistoryIndex(int historyIndex);
+    void deleteHistoryItem(int historyIndex);
 
   signals:
     void requestSetCharTachie(QString TachieName);
@@ -118,6 +119,7 @@ class Dialog : public QWidget
     void saveMemory() const;
     QString buildMemoryContext() const;
     void extractAndStoreMemory(const QString &userInput, const QString &aiReply);
+    void compressContextHistory();
     void startSpeechRecording();
     void startSpeechRecordingFromHotkey();
     void stopSpeechRecording();
@@ -134,7 +136,6 @@ class Dialog : public QWidget
     void captureAndAnalyzeScreen();
     void analyzeScreenWithVision(const QByteArray &imageBase64,
                                   const QString &userMessage);
-    void handleVisionError(const QString &errorMsg);
     static QStringList screenCaptureTriggerKeywords();
     bool doSubmitCurrentInput(const QString &userInput);
 };

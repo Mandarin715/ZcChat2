@@ -234,6 +234,8 @@ void SettingChild_Plugin::OpenPluginDetail(const QString &pluginName)
         if (animationList.isEmpty())
             animationList.append("该插件没有可用动画");
 
+        if (ui->listView_PluginAnimations->model())
+            ui->listView_PluginAnimations->model()->deleteLater();
         QStringListModel *model =
             new QStringListModel(animationList, ui->listView_PluginAnimations);
         ui->listView_PluginAnimations->setModel(model);

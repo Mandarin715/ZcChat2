@@ -27,7 +27,6 @@
 #include <QGraphicsOpacityEffect>
 #include <QGuiApplication>
 #include <QJsonDocument>
-#include <QJsonObject>
 #include <QMediaDevices>
 #include <QMediaFormat>
 #include <QMediaPlayer>
@@ -229,6 +228,9 @@ void Dialog::appendHistoryLine(const QString &line)
     if (line.isEmpty())
         return;
     m_contextHistory.append(line);
+    // 历史超过60行时异步AI压缩
+    if (m_contextHistory.size() > 60)
+        compressContextHistory();
 }
 
 /*保存上下文历史*/
@@ -286,6 +288,7 @@ Dialog::Dialog(QWidget *parent)
 {
     ui->setupUi(this);
     initWindow();
+    lastPos = pos();
 
     /*AI初始化*/
     ai = new AiProvider(this);
@@ -615,6 +618,8 @@ void Dialog::on_pushButton_history_clicked()
         historyWin = new history(this);
         connect(historyWin, &history::jumpToHistory, this,
                 &Dialog::rewindToHistoryIndex);
+        connect(historyWin, &history::deleteHistory, this,
+                &Dialog::deleteHistoryItem);
     }
 
     //刷新历史记录内容
@@ -642,8 +647,12 @@ void Dialog::on_pushButton_history_clicked()
 
         //显示历史记录窗口动画效果
         QGraphicsOpacityEffect *opacityEffect =
-            new QGraphicsOpacityEffect(historyWin);
-        historyWin->setGraphicsEffect(opacityEffect);
+            qobject_cast<QGraphicsOpacityEffect *>(historyWin->graphicsEffect());
+        if (!opacityEffect)
+        {
+            opacityEffect = new QGraphicsOpacityEffect(historyWin);
+            historyWin->setGraphicsEffect(opacityEffect);
+        }
 
         QRect startRect = historyWin->geometry();
         QRect endRect = startRect;
@@ -744,6 +753,30 @@ void Dialog::rewindToHistoryIndex(int historyIndex)
         on_pushButton_history_clicked();
 }
 
+/*删除历史记录条目*/
+void Dialog::deleteHistoryItem(int historyIndex)
+{
+    if (historyIndex < 0 || historyIndex >= m_contextHistory.size())
+        return;
+
+    m_contextHistory.removeAt(historyIndex);
+    saveContextHistory();
+
+    // 刷新历史窗口
+    if (historyWin && isHistoryOpen)
+    {
+        historyWin->clearHistory();
+        for (int i = 0; i < m_contextHistory.size(); ++i)
+        {
+            const QString &line = m_contextHistory.at(i);
+            if (line.startsWith(QStringLiteral("用户：")))
+                historyWin->addChildWindow(i, QStringLiteral("你"), line.mid(3));
+            else if (line.startsWith(QStringLiteral("角色：")))
+                historyWin->addChildWindow(i, QStringLiteral("她"), line.mid(3));
+        }
+    }
+}
+
 /*移动窗口*/
 void Dialog::moveEvent(QMoveEvent *event)
 {
@@ -809,8 +842,6 @@ bool Dialog::nativeEvent(const QByteArray &eventType, void *message,
 /*追加待合成文本*/
 void Dialog::VitsGetAndPlay(QString text)
 {
-    qDebug() << "请求合成文本：" << text;
-
     m_vitsPendingTexts.append(text);
     tryStartNextVitsRequest();
 }
@@ -1813,12 +1844,74 @@ void Dialog::analyzeScreenWithVision(const QByteArray &imageBase64,
             });
 }
 
-/*视觉分析错误恢复*/
-void Dialog::handleVisionError(const QString &errorMsg)
+/*异步压缩历史对话*/
+void Dialog::compressContextHistory()
 {
-    ui->textEdit->setText(errorMsg);
-    ui->textEdit->setEnabled(true);
-    ui->label_name->setText(QStringLiteral("你"));
-    ui->pushButton_next->show();
-    m_lastUserInput.clear();
+    if (m_contextHistory.size() <= 60)
+        return;
+
+    // 取最早的20行（10轮对话）送去概括
+    QStringList oldLines;
+    const int compressCount = qMin(20, m_contextHistory.size() - 40);
+    for (int i = 0; i < compressCount; ++i)
+        oldLines.append(m_contextHistory.takeFirst());
+
+    const QString oldText = oldLines.join("\n");
+
+    // 创建独立AI实例
+    AiProvider *compressAi = new AiProvider(this);
+    compressAi->setStreamEnabled(false);
+
+    ZcJsonLib config(JsonSettingPath);
+    ZcJsonLib charConfig(ReadCharacterUserConfigPath());
+    QString serverSelect = charConfig.value("serverSelect").toString();
+    if (serverSelect.isEmpty())
+        serverSelect = QStringLiteral("DeepSeek");
+    const QString apiKey =
+        config.value("llm/" + serverSelect + "/ApiKey").toString();
+    const QString model = charConfig.value("modelSelect").toString();
+
+    if (serverSelect == "DeepSeek")
+        compressAi->setServiceType(AiProvider::DeepSeek);
+    else if (serverSelect == "OpenAI")
+        compressAi->setServiceType(AiProvider::OpenAI);
+    else if (serverSelect == "Custom")
+        compressAi->setServiceType(AiProvider::Custom);
+    else
+        compressAi->setServiceType(AiProvider::DeepSeek);
+    compressAi->setApiKey(apiKey);
+    compressAi->setModel(model);
+
+    compressAi->setSystemPrompt(QStringLiteral(
+        "你是一个对话摘要助手。用一句话（50字内）概括以下对话的核心内容。"));
+
+    const QString prompt = QStringLiteral(
+        "请用一句话概括以下对话，50字以内：\n\n%1").arg(oldText);
+
+    connect(compressAi, &AiProvider::replyReceived, this,
+            [this, compressAi](const QString &reply)
+            {
+                QString summary = reply.trimmed();
+                if (!summary.isEmpty())
+                {
+                    m_contextHistory.prepend(
+                        QStringLiteral("角色：[对话摘要] ") + summary);
+                    saveContextHistory();
+                }
+                else
+                {
+                    // 概括失败，放回原文
+                    qWarning() << "Context compression: empty AI reply";
+                }
+                compressAi->deleteLater();
+            });
+
+    connect(compressAi, &AiProvider::errorOccurred, this,
+            [this, compressAi](const QString &error)
+            {
+                qWarning() << "Context compression AI error:" << error;
+                compressAi->deleteLater();
+            });
+
+    compressAi->chat(prompt);
 }

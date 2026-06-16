@@ -19,9 +19,11 @@ class historychild : public QWidget
 
   signals:
     void jumpRequested(int historyIndex);
+    void deleteRequested(int historyIndex);
 
   private slots:
     void on_pushButton_jump_clicked();
+    void on_pushButton_delete_clicked();
 
   private:
     Ui::historychild *ui;

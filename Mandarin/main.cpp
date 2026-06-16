@@ -98,7 +98,6 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationName("ZcChat2");
     QCoreApplication::setApplicationVersion(APP_VERSION);
     QCoreApplication::setOrganizationName("MyOrganization");
-    qInfo() << "Debugging Output";
 
     /*窗口创建*/
     Dialog dialogWin;

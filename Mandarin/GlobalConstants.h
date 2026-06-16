@@ -69,3 +69,12 @@ inline QString ReadCharacterContextPath()
     return QDir(CharacterUserConfigPath)
         .filePath(ReadNowSelectChar() + "/context.json");
 }
+
+//读取当前选中角色的记忆路径
+inline QString ReadCharacterMemoryPath()
+{
+    if (ReadNowSelectChar() == "未选择")
+        return QString();
+    return QDir(CharacterUserConfigPath)
+        .filePath(ReadNowSelectChar() + "/memory.json");
+}

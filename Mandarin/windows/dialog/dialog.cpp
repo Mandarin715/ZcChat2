@@ -9,6 +9,7 @@
 
 #include "ZcJsonLib.h"
 #include <QCoreApplication>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -336,6 +337,7 @@ Dialog::Dialog(QWidget *parent)
     ReloadGeneralConfig();
     ReloadSpeechInputConfig();
     loadContextHistory();
+    loadMemory();
 
     //接收分块回复
     connect(ai, &AiProvider::replyChunkReceived, [=](const QString &chunk)
@@ -428,6 +430,7 @@ Dialog::Dialog(QWidget *parent)
                 emit requestSetCharTachie(mood); //提取心情并发出信号
 
                 //历史记录写入
+                const QString capturedUserInput = m_lastUserInput;
                 if (!m_lastUserInput.isEmpty())
                 {
                     appendHistoryLine(QStringLiteral("用户：") + m_lastUserInput);
@@ -435,6 +438,10 @@ Dialog::Dialog(QWidget *parent)
                 }
                 appendHistoryLine(QStringLiteral("角色：") + chineseReply);
                 saveContextHistory();
+
+                // 异步提取记忆（不阻塞界面）
+                if (!capturedUserInput.isEmpty())
+                    extractAndStoreMemory(capturedUserInput, chineseReply);
 
                 //重置内容
                 m_streamRawReply.clear();
@@ -526,6 +533,7 @@ void Dialog::ReloadAIConfig()
     ai->setModel(modelSelect);
 
     loadContextHistory();
+    loadMemory();
 }
 
 /*重载语音输入配置*/
@@ -926,6 +934,12 @@ bool Dialog::submitCurrentInput()
     const QString characterPrompt =
         roleConfig.value("prompt").toString().trimmed();
     QString systemPrompt;
+
+    // 注入用户记忆
+    const QString memoryContext = buildMemoryContext();
+    if (!memoryContext.isEmpty())
+        systemPrompt += memoryContext + QStringLiteral("\n\n");
+
     if (!characterPrompt.isEmpty())
         systemPrompt += QStringLiteral("角色设定：") + characterPrompt +
                         QStringLiteral("\n请始终保持该设定进行回复。\n\n");
@@ -1244,4 +1258,274 @@ void Dialog::releaseSpeechHotkeyResources()
         }
     }
 #endif
+}
+
+/* 加载记忆文件 */
+void Dialog::loadMemory()
+{
+    const QString memoryPath = ReadCharacterMemoryPath();
+    if (memoryPath.isEmpty())
+        return;
+
+    QFile file(memoryPath);
+    if (!file.exists())
+    {
+        m_memoryData = QJsonObject();
+        // 创建初始空记忆文件，确保文件在首次使用时就被创建
+        saveMemory();
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        qWarning() << "loadMemory: failed to open file for reading" << memoryPath;
+        return;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+
+    if (doc.isObject())
+        m_memoryData = doc.object();
+    else
+        m_memoryData = QJsonObject();
+}
+
+/* 保存记忆文件 */
+void Dialog::saveMemory() const
+{
+    const QString memoryPath = ReadCharacterMemoryPath();
+    if (memoryPath.isEmpty())
+        return;
+
+    const QFileInfo fileInfo(memoryPath);
+    if (!QDir().mkpath(fileInfo.absolutePath()))
+    {
+        qWarning() << "saveMemory: failed to create directory" << fileInfo.absolutePath();
+        return;
+    }
+
+    QFile file(memoryPath);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        qWarning() << "saveMemory: failed to open file for writing" << memoryPath;
+        return;
+    }
+
+    const QJsonDocument doc(m_memoryData);
+    file.write(doc.toJson(QJsonDocument::Indented));
+    file.close();
+}
+
+/* 构建记忆上下文文本，用于注入系统提示词 */
+QString Dialog::buildMemoryContext() const
+{
+    QString context;
+
+    // 个人信息
+    const QJsonObject personalInfo = m_memoryData.value("personal_info").toObject();
+    if (!personalInfo.isEmpty())
+    {
+        context += QStringLiteral("关于用户的记忆：\n");
+        for (auto it = personalInfo.begin(); it != personalInfo.end(); ++it)
+        {
+            context += QStringLiteral("- ") + it.key() +
+                       QStringLiteral("：") + it.value().toString() +
+                       QStringLiteral("\n");
+        }
+    }
+
+    // 帮助摘要
+    const QJsonArray helpSummaries =
+        m_memoryData.value("help_summaries").toArray();
+    if (!helpSummaries.isEmpty())
+    {
+        if (!context.isEmpty())
+            context += QStringLiteral("\n");
+        context += QStringLiteral("用户曾向你寻求过的帮助：\n");
+        for (const QJsonValue &val : helpSummaries)
+        {
+            const QJsonObject summary = val.toObject();
+            context += QStringLiteral("- ") +
+                       summary.value("topic").toString() +
+                       QStringLiteral("：") +
+                       summary.value("summary").toString() +
+                       QStringLiteral("\n");
+        }
+    }
+
+    return context;
+}
+
+/* 从对话中异步提取记忆 */
+void Dialog::extractAndStoreMemory(const QString &userInput,
+                                    const QString &aiReply)
+{
+    if (userInput.trimmed().isEmpty() || aiReply.trimmed().isEmpty())
+        return;
+
+    // 创建独立的 AI 实例用于记忆提取（非流式）
+    AiProvider *memoryAi = new AiProvider(this);
+    memoryAi->setStreamEnabled(false);
+
+    // 复用当前角色的 AI 配置
+    ZcJsonLib charConfig(ReadCharacterUserConfigPath());
+    QString serverSelect = charConfig.value("serverSelect").toString();
+    if (serverSelect == "DeepSeek")
+        memoryAi->setServiceType(AiProvider::DeepSeek);
+    else if (serverSelect == "OpenAI")
+        memoryAi->setServiceType(AiProvider::OpenAI);
+    else if (serverSelect == "Custom")
+        memoryAi->setServiceType(AiProvider::Custom);
+    else
+        memoryAi->setServiceType(AiProvider::DeepSeek);
+
+    const ZcJsonLib config(JsonSettingPath);
+    const QString apiKey =
+        config.value("llm/" + serverSelect + "/ApiKey").toString();
+    memoryAi->setApiKey(apiKey);
+    if (serverSelect == "Custom")
+    {
+        const QString baseUrl =
+            config.value("llm/Custom/BaseUrl").toString().trimmed();
+        if (!baseUrl.isEmpty())
+            memoryAi->setBaseUrl(baseUrl);
+    }
+    const QString modelSelect = charConfig.value("modelSelect").toString();
+    memoryAi->setModel(modelSelect);
+
+    // 记忆提取专用的系统提示词
+    memoryAi->setSystemPrompt(QStringLiteral(
+        "你是一个信息提取助手。你的任务是从对话中提取值得长期记忆的用户信息。\n"
+        "你必须严格只返回JSON，不要包含任何其他文字、解释或markdown标记。"));
+
+    // 构建包含对话内容和提取规则的聊天消息
+    const QString extractionMessage = QStringLiteral(
+        "分析以下对话，提取值得记忆的信息：\n\n"
+        "用户：%1\n"
+        "角色：%2\n\n"
+        "请严格返回以下JSON格式（仅JSON，无其他内容）：\n"
+        "{\"has_personal_info\":false,\"personal_info\":{},\"is_help\":false,"
+        "\"help_summary\":\"\"}\n\n"
+        "判断规则：\n"
+        "1. has_personal_info：对话中是否包含用户的独特个人信息。\n"
+        "   - 值得记忆：名字、昵称、年龄、职业、喜好、习惯、家庭成员、重要经历等\n"
+        "   - 不需要记忆：日常寒暄、临时情绪、对天气/食物的随口评价\n"
+        "2. personal_info：以键值对给出。例如{\"名字\":\"小明\",\"爱好\":\"编程\"}。\n"
+        "   没有则为{}。\n"
+        "3. is_help：用户是否在寻求帮助/建议/教学/问题解答。\n"
+        "   普通闲聊、分享日常、表达情绪不算求助。\n"
+        "4. help_summary：仅在is_help为true时填写，用一句话（30字内）概括。\n"
+        "   格式：\"[问题类型]用户问题简述\"")
+        .arg(userInput, aiReply);
+
+    // 处理提取结果
+    connect(memoryAi, &AiProvider::replyReceived, this,
+            [this, memoryAi](const QString &reply)
+            {
+                // 尝试清理可能的 markdown 代码块包装
+                QString jsonText = reply.trimmed();
+                if (jsonText.startsWith("```"))
+                {
+                    const int firstNewline = jsonText.indexOf('\n');
+                    if (firstNewline >= 0)
+                        jsonText = jsonText.mid(firstNewline + 1);
+                }
+                if (jsonText.endsWith("```"))
+                    jsonText = jsonText.left(jsonText.lastIndexOf("```")).trimmed();
+
+                const QJsonDocument doc =
+                    QJsonDocument::fromJson(jsonText.toUtf8());
+                if (!doc.isObject())
+                {
+                    memoryAi->deleteLater();
+                    return;
+                }
+
+                const QJsonObject result = doc.object();
+                bool changed = false;
+
+                // 处理个人信息
+                if (result.value("has_personal_info").toBool(false))
+                {
+                    const QJsonObject newInfo =
+                        result.value("personal_info").toObject();
+                    QJsonObject existingInfo =
+                        m_memoryData.value("personal_info").toObject();
+
+                    for (auto it = newInfo.begin(); it != newInfo.end(); ++it)
+                    {
+                        const QString key = it.key().trimmed();
+                        const QString value = it.value().toString().trimmed();
+                        if (!key.isEmpty() && !value.isEmpty())
+                        {
+                            if (!existingInfo.contains(key) ||
+                                existingInfo.value(key).toString() != value)
+                            {
+                                existingInfo[key] = value;
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    if (changed)
+                        m_memoryData["personal_info"] = existingInfo;
+                }
+
+                // 处理帮助摘要
+                if (result.value("is_help").toBool(false))
+                {
+                    const QString helpSummary =
+                        result.value("help_summary").toString().trimmed();
+                    if (!helpSummary.isEmpty())
+                    {
+                        QJsonArray helpSummaries =
+                            m_memoryData.value("help_summaries").toArray();
+
+                        // 去重检查
+                        bool duplicate = false;
+                        for (const QJsonValue &val : helpSummaries)
+                        {
+                            if (val.toObject().value("summary").toString() ==
+                                helpSummary)
+                            {
+                                duplicate = true;
+                                break;
+                            }
+                        }
+
+                        if (!duplicate)
+                        {
+                            // 保留最近20条，避免膨胀
+                            if (helpSummaries.size() >= 20)
+                                helpSummaries.removeFirst();
+
+                            QJsonObject newSummary;
+                            newSummary["topic"] = helpSummary;
+                            newSummary["summary"] = helpSummary;
+                            newSummary["date"] =
+                                QDate::currentDate().toString("yyyy-MM-dd");
+                            helpSummaries.append(newSummary);
+                            m_memoryData["help_summaries"] = helpSummaries;
+                            changed = true;
+                        }
+                    }
+                }
+
+                if (changed)
+                    saveMemory();
+
+                memoryAi->deleteLater();
+            });
+
+    // 错误处理：静默失败，不影响用户体验
+    connect(memoryAi, &AiProvider::errorOccurred, this,
+            [memoryAi](const QString &error)
+            {
+                qWarning() << "Memory extraction AI error:" << error;
+                memoryAi->deleteLater();
+            });
+
+    // 发送提取请求
+    memoryAi->chat(extractionMessage);
 }

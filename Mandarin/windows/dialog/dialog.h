@@ -2,7 +2,9 @@
 #define DIALOG_H
 
 #include "AiProvider.h"
+#include <QDate>
 #include <QEvent>
+#include <QJsonObject>
 #include <QMediaCaptureSession>
 #include <QMediaRecorder>
 #include <QMoveEvent>
@@ -108,6 +110,12 @@ class Dialog : public QWidget
     QAudioInput *m_speechAudioInput = nullptr;
     void tryStartNextVitsPlayback();
     bool submitCurrentInput();
+    // 记忆功能
+    QJsonObject m_memoryData;
+    void loadMemory();
+    void saveMemory() const;
+    QString buildMemoryContext() const;
+    void extractAndStoreMemory(const QString &userInput, const QString &aiReply);
     void startSpeechRecording();
     void startSpeechRecordingFromHotkey();
     void stopSpeechRecording();

@@ -22,9 +22,10 @@
 #include <QAudioDevice>
 #include <QAudioInput>
 #include <QAudioOutput>
+#include <QBuffer>
 #include <QEventLoop>
 #include <QGraphicsOpacityEffect>
-#include <QJsonArray>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMediaDevices>
@@ -36,6 +37,8 @@
 #include <QParallelAnimationGroup>
 #include <QPermissions>
 #include <QPropertyAnimation>
+#include <QPixmap>
+#include <QScreen>
 #include <QTemporaryFile>
 #include <QUrlQuery>
 #include <QUuid>
@@ -102,6 +105,7 @@ static int findNextSentenceEnd(const QString &text, int start)
 /*窗口的绘制*/
 void Dialog::paintEvent(QPaintEvent *event)
 {
+    Q_UNUSED(event);
     QPainterPath path;
     path.setFillRule(Qt::WindingFill);
     QRectF rect(5, 5, this->width() - 10, this->height() - 10);
@@ -147,6 +151,7 @@ void Dialog::initWindow()
     ui->textEdit->viewport()->installEventFilter(this);
     //初始隐藏语音输入相关控件，后续根据配置决定是否显示
     ui->pushButton_input->hide();
+    ui->pushButton_screenCapture->hide();
     ui->checkBox_autoInput->hide();
 }
 
@@ -288,6 +293,7 @@ Dialog::Dialog(QWidget *parent)
 
     /*Vits初始化*/
     m_vitsManager = new QNetworkAccessManager(this);
+    m_visionManager = new QNetworkAccessManager(this);
     m_vitsPlayer = new QMediaPlayer(this);
     m_vitsAudioOutput = new QAudioOutput(this);
     m_vitsPlayer->setAudioOutput(m_vitsAudioOutput);
@@ -336,6 +342,7 @@ Dialog::Dialog(QWidget *parent)
     ReloadAIConfig();
     ReloadGeneralConfig();
     ReloadSpeechInputConfig();
+    ReloadScreenCaptureConfig();
     loadContextHistory();
     loadMemory();
 
@@ -921,6 +928,35 @@ bool Dialog::submitCurrentInput()
         return false;
     }
 
+    // 屏幕捕获关键词检测
+    if (m_screenCaptureEnabled)
+    {
+        const QString lowerInput = userInput.toLower();
+        const QStringList triggers = screenCaptureTriggerKeywords();
+        bool triggered = false;
+        for (const QString &kw : triggers)
+        {
+            if (lowerInput.contains(kw))
+            {
+                triggered = true;
+                break;
+            }
+        }
+        if (triggered)
+        {
+            m_lastUserInput = userInput;
+            ui->textEdit->setText(QStringLiteral("正在分析屏幕内容……"));
+            captureAndAnalyzeScreen();
+            return true;
+        }
+    }
+
+    return doSubmitCurrentInput(userInput);
+}
+
+/*执行提交逻辑（供屏幕捕获回调复用）*/
+bool Dialog::doSubmitCurrentInput(const QString &userInput)
+{
     QDir dir(ReadCharacterTachiePath());
     QStringList nameFilters;
     nameFilters << "*.png" << "*.jpg" << "*.jpeg";
@@ -1528,4 +1564,250 @@ void Dialog::extractAndStoreMemory(const QString &userInput,
 
     // 发送提取请求
     memoryAi->chat(extractionMessage);
+}
+
+/*截图按钮点击*/
+void Dialog::on_pushButton_screenCapture_clicked()
+{
+    if (!ui->textEdit->isEnabled())
+        return;
+
+    const QString userInput = ui->textEdit->toPlainText().trimmed();
+    const QString message = userInput.isEmpty()
+        ? QStringLiteral("帮我看看屏幕上的内容")
+        : userInput;
+
+    ui->label_name->setText(QStringLiteral("她"));
+    ui->textEdit->setEnabled(false);
+    ui->pushButton_next->hide();
+    ui->textEdit->setText(QStringLiteral("正在分析屏幕内容……"));
+    m_lastUserInput = message;
+    captureAndAnalyzeScreen();
+}
+
+/*重载屏幕捕获配置*/
+void Dialog::ReloadScreenCaptureConfig()
+{
+    ZcJsonLib config(JsonSettingPath);
+    m_screenCaptureEnabled =
+        config.value("screenCapture/Enable", false).toBool();
+
+    ui->pushButton_screenCapture->setVisible(m_screenCaptureEnabled);
+    ui->pushButton_screenCapture->setEnabled(m_screenCaptureEnabled);
+}
+
+/*屏幕捕获触发关键词*/
+QStringList Dialog::screenCaptureTriggerKeywords()
+{
+    return {
+        QStringLiteral("看看屏幕"),
+        QStringLiteral("看下屏幕"),
+        QStringLiteral("帮我看看"),
+        QStringLiteral("看看这个"),
+        QStringLiteral("看下这个"),
+        QStringLiteral("截图"),
+        QStringLiteral("屏幕截图"),
+        QStringLiteral("截屏"),
+        QStringLiteral("看屏幕"),
+        QStringLiteral("帮我看看这个"),
+    };
+}
+
+/*截取屏幕并编码为JPEG base64*/
+QByteArray Dialog::captureScreenToJpeg()
+{
+    QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+    {
+        qWarning() << "Screen capture: no primary screen available";
+        return QByteArray();
+    }
+
+    QPixmap pixmap = screen->grabWindow(0);
+    if (pixmap.isNull())
+    {
+        qWarning() << "Screen capture: grabWindow returned null pixmap";
+        return QByteArray();
+    }
+
+    // 缩放至最大1920px，保持宽高比
+    QImage image = pixmap.toImage();
+    const int maxDim = 1920;
+    if (image.width() > maxDim || image.height() > maxDim)
+    {
+        image = image.scaled(maxDim, maxDim, Qt::KeepAspectRatio,
+                             Qt::SmoothTransformation);
+    }
+
+    QByteArray jpegData;
+    QBuffer buffer(&jpegData);
+    buffer.open(QIODevice::WriteOnly);
+    image.save(&buffer, "JPEG", 70);
+    buffer.close();
+
+    return jpegData;
+}
+
+/*捕获屏幕并启动分析*/
+void Dialog::captureAndAnalyzeScreen()
+{
+    if (m_visionInFlight)
+        return;
+
+    const QByteArray jpegData = captureScreenToJpeg();
+    if (jpegData.isEmpty())
+    {
+        ui->textEdit->setText(QStringLiteral("屏幕捕获失败，请重试"));
+        ui->textEdit->setEnabled(true);
+        ui->label_name->setText(QStringLiteral("你"));
+        ui->pushButton_next->show();
+        m_lastUserInput.clear();
+        return;
+    }
+
+    const QString imageBase64 = QString::fromLatin1(jpegData.toBase64());
+    const QString userMessage = m_lastUserInput.isEmpty()
+        ? QStringLiteral("帮我看看屏幕上的内容")
+        : m_lastUserInput;
+
+    m_visionInFlight = true;
+    analyzeScreenWithVision(imageBase64, userMessage);
+}
+
+/*发送截图到视觉AI分析*/
+void Dialog::analyzeScreenWithVision(const QByteArray &imageBase64,
+                                      const QString &userMessage)
+{
+    // 读取AI配置
+    ZcJsonLib charConfig(ReadCharacterUserConfigPath());
+    QString serverSelect = charConfig.value("serverSelect").toString();
+    if (serverSelect.isEmpty())
+        serverSelect = QStringLiteral("DeepSeek");
+
+    ZcJsonLib config(JsonSettingPath);
+    const QString apiKey =
+        config.value("llm/" + serverSelect + "/ApiKey").toString();
+    const QString model = charConfig.value("modelSelect").toString();
+
+    // 确定API端点
+    QString apiUrl;
+    if (serverSelect == "OpenAI")
+        apiUrl = QStringLiteral("https://api.openai.com/v1/chat/completions");
+    else if (serverSelect == "DeepSeek")
+        apiUrl = QStringLiteral("https://api.deepseek.com/v1/chat/completions");
+    else if (serverSelect == "Custom")
+    {
+        const QString baseUrl =
+            config.value("llm/Custom/BaseUrl").toString().trimmed();
+        if (baseUrl.isEmpty())
+        {
+            qWarning() << "Vision API: Custom server selected but no BaseUrl configured";
+            handleVisionError(
+                QStringLiteral("请先在设置中配置自定义服务器的BaseUrl"));
+            return;
+        }
+        apiUrl = baseUrl + "/v1/chat/completions";
+    }
+
+    // 构建多模态消息
+    QJsonArray content;
+    QJsonObject textPart;
+    textPart["type"] = "text";
+    textPart["text"] = QStringLiteral(
+        "请分析这张屏幕截图的内容，用中文简要描述你能看到什么。"
+        "如果屏幕上有代码，请说明代码的大致功能和结构。"
+        "如果屏幕上有对话框、网页或文档，请总结其内容。"
+        "请简洁直接，200字以内。");
+    content.append(textPart);
+
+    QJsonObject imagePart;
+    imagePart["type"] = "image_url";
+    QJsonObject imageUrlObj;
+    imageUrlObj["url"] =
+        QStringLiteral("data:image/jpeg;base64,") + imageBase64;
+    imagePart["image_url"] = imageUrlObj;
+    content.append(imagePart);
+
+    QJsonObject userMsg;
+    userMsg["role"] = "user";
+    userMsg["content"] = content;
+
+    QJsonObject sysMsg;
+    sysMsg["role"] = "system";
+    sysMsg["content"] = QStringLiteral("你是一个屏幕分析助手，用中文简洁回复。");
+
+    QJsonArray messages;
+    messages.append(sysMsg);
+    messages.append(userMsg);
+
+    QJsonObject body;
+    body["model"] = model;
+    body["messages"] = messages;
+    body["max_tokens"] = 500;
+    body["stream"] = false;
+
+    QNetworkRequest request(QUrl(apiUrl));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Authorization", ("Bearer " + apiKey).toUtf8());
+
+    QNetworkReply *reply =
+        m_visionManager->post(request,
+                              QJsonDocument(body).toJson(QJsonDocument::Compact));
+
+    // 处理响应
+    connect(reply, &QNetworkReply::finished, this,
+            [this, reply, userMessage]()
+            {
+                reply->deleteLater();
+                m_visionInFlight = false;
+
+                if (reply->error() != QNetworkReply::NoError)
+                {
+                    qWarning() << "Vision API error:" << reply->errorString();
+                    handleVisionError(
+                        QStringLiteral("屏幕分析失败：") + reply->errorString());
+                    return;
+                }
+
+                const QJsonDocument responseDoc =
+                    QJsonDocument::fromJson(reply->readAll());
+                const QJsonObject responseObj = responseDoc.object();
+                const QJsonArray choices =
+                    responseObj.value("choices").toArray();
+
+                QString visionResult;
+                if (!choices.isEmpty())
+                {
+                    const QJsonObject firstChoice =
+                        choices.first().toObject();
+                    const QJsonObject message =
+                        firstChoice.value("message").toObject();
+                    visionResult = message.value("content").toString().trimmed();
+                }
+
+                if (visionResult.isEmpty())
+                {
+                    qWarning() << "Vision API returned empty content";
+                    handleVisionError(
+                        QStringLiteral("(未能识别屏幕内容，可能是模型不支持视觉功能)"));
+                    return;
+                }
+
+                // 将分析结果注入用户消息，走正常对话流程
+                const QString enhancedInput = userMessage +
+                    QStringLiteral("\n\n[当前屏幕截图的分析结果]：") +
+                    visionResult;
+
+                doSubmitCurrentInput(enhancedInput);
+            });
+}
+
+/*视觉分析错误恢复*/
+void Dialog::handleVisionError(const QString &errorMsg)
+{
+    ui->textEdit->setText(errorMsg);
+    ui->textEdit->setEnabled(true);
+    ui->label_name->setText(QStringLiteral("你"));
+    ui->pushButton_next->show();
+    m_lastUserInput.clear();
 }

@@ -281,6 +281,37 @@ QPushButton:pressed {
       <number>0</number>
      </property>
      <item>
+      <widget class="QPushButton" name="pushButton_screenCapture">
+       <property name="toolTip">
+        <string>截图分析屏幕内容</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 4px 8px;
+}
+
+QPushButton:hover {
+    border: 2px solid #CCCCCC;
+}
+
+QPushButton:pressed {
+    border: 2px solid #AAAAAA;
+}
+</string>
+       </property>
+       <property name="text">
+        <string>看看屏幕</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../../res.qrc">
+         <normaloff>:/res/img/ico/camera-solid.svg</normaloff>:/res/img/ico/camera-solid.svg</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
       <widget class="QPushButton" name="pushButton_input">
        <property name="styleSheet">
         <string notr="true">QPushButton {

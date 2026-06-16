@@ -248,10 +248,9 @@ SettingChild_Char::SettingChild_Char(QWidget *parent)
 
     /*读取配置项*/
     //角色选择
-    QSettings *settings =
-        new QSettings(IniSettingPath, QSettings::IniFormat, this);
+    QSettings settings(IniSettingPath, QSettings::IniFormat);
     QString defaultChar =
-        settings->value("character/CharSelect", "未选择").toString();
+        settings.value("character/CharSelect", "未选择").toString();
     ui->comboBox_CharList->setCurrentText(defaultChar);
     LoadCurrentCharConfig();
 
@@ -382,9 +381,8 @@ void SettingChild_Char::on_comboBox_CharList_currentTextChanged(
     if (!isAlreadyLoading)
         return;
     //保存到配置文件
-    QSettings *settings =
-        new QSettings(IniSettingPath, QSettings::IniFormat, this);
-    settings->setValue("character/CharSelect", arg1);
+    QSettings settings(IniSettingPath, QSettings::IniFormat);
+    settings.setValue("character/CharSelect", arg1);
 
     isAlreadyLoading = false;
     LoadCurrentCharConfig();
@@ -685,13 +683,6 @@ void SettingChild_Char::on_pushButton_OutputChar_clicked()
         ElaMessageBarType::BottomRight, "导出成功",
         QString("角色 %1 已成功导出到:\n%2").arg(charName, zipFilePath), 4000,
         this);
-}
-
-/*刷新立绘动画列表*/
-void SettingChild_Char::RefreshTachieAnimationList()
-{
-    //兼容旧调用：现在动画绑定随动作行一起刷新
-    RefreshTachieActionList();
 }
 
 /*清理动态创建的动作绑定行*/

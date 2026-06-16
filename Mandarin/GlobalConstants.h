@@ -32,9 +32,9 @@ inline const QString AnimePluginPath =
 //读取当前选中的角色
 inline QString ReadNowSelectChar()
 {
-    QSettings *settings = new QSettings(IniSettingPath, QSettings::IniFormat);
+    QSettings settings(IniSettingPath, QSettings::IniFormat);
     QString charName =
-        settings->value("character/CharSelect", "未选择").toString();
+        settings.value("character/CharSelect", "未选择").toString();
     return charName;
 }
 

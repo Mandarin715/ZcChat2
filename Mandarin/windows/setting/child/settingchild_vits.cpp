@@ -58,6 +58,8 @@ void SettingChild_Vits::on_pushButton_VSA_Set_clicked()
 /*面包屑返回上级*/
 void SettingChild_Vits::on_BreadcrumbBar_breadcrumbClicked(QString breadcrumb, QStringList lastBreadcrumbList)
 {
+    Q_UNUSED(breadcrumb);
+    Q_UNUSED(lastBreadcrumbList);
     ui->stackedWidget->setCurrentIndex(0);
 }
 

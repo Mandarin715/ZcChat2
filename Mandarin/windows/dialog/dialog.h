@@ -37,11 +37,13 @@ class Dialog : public QWidget
     void VitsGetAndPlay(QString text);
     void ReloadGeneralConfig();
     void ReloadSpeechInputConfig();
+    void ReloadScreenCaptureConfig();
     bool handleSpeechHotkeyEvent(quint32 vkCode, bool isKeyDown, bool isKeyUp);
 
   private slots:
     void on_pushButton_next_clicked();
     void on_pushButton_history_clicked();
+    void on_pushButton_screenCapture_clicked();
     void on_pushButton_input_pressed();
     void on_pushButton_input_released();
     void on_checkBox_autoInput_toggled(bool checked);
@@ -124,6 +126,17 @@ class Dialog : public QWidget
     QString requestBaiduAccessToken(const QString &apiKey,
                                     const QString &secretKey);
     void releaseSpeechHotkeyResources();
+    // 多模态屏幕捕获
+    bool m_screenCaptureEnabled = false;
+    bool m_visionInFlight = false;
+    QNetworkAccessManager *m_visionManager = nullptr;
+    QByteArray captureScreenToJpeg();
+    void captureAndAnalyzeScreen();
+    void analyzeScreenWithVision(const QByteArray &imageBase64,
+                                  const QString &userMessage);
+    void handleVisionError(const QString &errorMsg);
+    static QStringList screenCaptureTriggerKeywords();
+    bool doSubmitCurrentInput(const QString &userInput);
 };
 
 #endif //DIALOG_H

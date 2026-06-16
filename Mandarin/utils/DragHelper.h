@@ -1,4 +1,3 @@
-//DragHelper.h
 #pragma once
 #include <QMouseEvent>
 #include <QObject>

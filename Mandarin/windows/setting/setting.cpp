@@ -6,6 +6,7 @@
 #include "child/settingchild_general.h"
 #include "child/settingchild_llm.h"
 #include "child/settingchild_plugin.h"
+#include "child/settingchild_screenCapture.h"
 #include "child/settingchild_speech.h"
 #include "child/settingchild_vits.h"
 
@@ -23,6 +24,10 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
     SettingChild_LLM *settingchild_llmWin = new SettingChild_LLM(this);
     settingchild_llmWin->show();
     addPageNode("对话模型", settingchild_llmWin, ElaIconType::Message);
+    SettingChild_ScreenCapture *settingchild_screenCaptureWin =
+        new SettingChild_ScreenCapture(this);
+    settingchild_screenCaptureWin->show();
+    addPageNode("屏幕捕获", settingchild_screenCaptureWin, ElaIconType::Camera);
     SettingChild_Speech *settingchild_speechWin = new SettingChild_Speech(this);
     settingchild_speechWin->show();
     addPageNode("语音输入", settingchild_speechWin, ElaIconType::Microphone);
@@ -39,8 +44,7 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
     addPageNode("角色设置", settingchild_charWin, ElaIconType::SquareUser);
     SettingChild_About *settingchild_aboutWin = new SettingChild_About(this);
     settingchild_aboutWin->show();
-    QString settingchild_aboutKey = "about";
-    addFooterNode("关于", settingchild_aboutWin, settingchild_aboutKey, 0, ElaIconType::CircleInfo);
+    addFooterNode("关于", settingchild_aboutWin, "about", 0, ElaIconType::CircleInfo);
 
     //连接
     connect(settingchild_charWin, &SettingChild_Char::requestReloadCharSelect,
@@ -56,6 +60,9 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
             settingchild_charWin, &SettingChild_Char::RefreshModelList); //刷新LLM模型列表
     connect(settingchild_vitsWin, &SettingChild_Vits::vitsModelListRefreshed,
             settingchild_charWin, &SettingChild_Char::RefreshVitsModelList); //刷新Vits模型列表
+    connect(settingchild_screenCaptureWin,
+            &SettingChild_ScreenCapture::screenCaptureConfigChanged,
+            dialog, &Dialog::ReloadScreenCaptureConfig); //刷新屏幕捕获配置
     connect(settingchild_speechWin, &SettingChild_Speech::speechConfigChanged,
             dialog, &Dialog::ReloadSpeechInputConfig); //刷新语音输入配置
     connect(settingchild_generalWin, &SettingChild_General::generalConfigChanged,

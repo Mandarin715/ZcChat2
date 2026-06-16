@@ -1,4 +1,3 @@
-//DragHelper.cpp
 #include "DragHelper.h"
 
 DragHelper::DragHelper(QWidget *parent)

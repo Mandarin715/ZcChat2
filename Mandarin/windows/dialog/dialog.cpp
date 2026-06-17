@@ -6,6 +6,7 @@
 
 #include "../../utils/CustomScrollBinder.h"
 #include "../../utils/DragHelper.h"
+#include "../../utils/WakeWordDetector.h"
 
 #include "ZcJsonLib.h"
 #include <QCoreApplication>
@@ -27,6 +28,7 @@
 #include <QGraphicsOpacityEffect>
 #include <QGuiApplication>
 #include <QJsonDocument>
+#include <QTimer>
 #include <QMediaDevices>
 #include <QMediaFormat>
 #include <QMediaPlayer>
@@ -294,6 +296,14 @@ Dialog::Dialog(QWidget *parent)
     ai = new AiProvider(this);
     ai->setStreamEnabled(true);
 
+    // 流式显示防抖定时器：合并50ms内的chunk再更新UI
+    m_streamDisplayTimer = new QTimer(this);
+    m_streamDisplayTimer->setSingleShot(true);
+    m_streamDisplayTimer->setInterval(50);
+    connect(m_streamDisplayTimer, &QTimer::timeout, this, [this]() {
+        ui->textEdit->setText(m_streamDisplayedChinese);
+    });
+
     /*Vits初始化*/
     m_vitsManager = new QNetworkAccessManager(this);
     m_visionManager = new QNetworkAccessManager(this);
@@ -345,6 +355,17 @@ Dialog::Dialog(QWidget *parent)
     ReloadAIConfig();
     ReloadGeneralConfig();
     ReloadSpeechInputConfig();
+    initWakeWord();
+
+    // 静音检测定时器：2.5秒无声音自动停止录音
+    m_silenceTimer = new QTimer(this);
+    m_silenceTimer->setSingleShot(true);
+    m_silenceTimer->setInterval(kSilenceTimeoutMs);
+    connect(m_silenceTimer, &QTimer::timeout, this, [this]() {
+        qDebug() << "Silence timeout, auto-stopping recording";
+        stopSpeechRecording();
+    });
+
     ReloadScreenCaptureConfig();
     loadContextHistory();
     loadMemory();
@@ -372,7 +393,8 @@ Dialog::Dialog(QWidget *parent)
                     chinesePartial != m_streamDisplayedChinese)
                 {
                     m_streamDisplayedChinese = chinesePartial;
-                    ui->textEdit->setText(m_streamDisplayedChinese);
+                    // 防抖：50ms内的chunk合并后再更新UI
+                    m_streamDisplayTimer->start();
                 }
 
                 /*第二个分隔符处理*/
@@ -416,7 +438,8 @@ Dialog::Dialog(QWidget *parent)
                 const QString chineseReply = finalReply.section('|', 1, 1).trimmed();
                 const QString japaneseReply = finalReply.section('|', 2, 2).trimmed();
 
-                //界面更新
+                //界面更新（停止防抖定时器，立即显示最终结果）
+                m_streamDisplayTimer->stop();
                 ui->pushButton_next->show();
                 ui->textEdit->setText(chineseReply); //提取中文内容并显示
                 //语音合成补漏或收尾生成
@@ -449,9 +472,15 @@ Dialog::Dialog(QWidget *parent)
                 appendHistoryLine(QStringLiteral("角色：") + chineseReply);
                 saveContextHistory();
 
-                // 异步提取记忆（不阻塞界面）
+                // 延迟提取记忆：让VITS语音合成请求先发出，避免争抢网络
                 if (!capturedUserInput.isEmpty())
-                    extractAndStoreMemory(capturedUserInput, chineseReply);
+                {
+                    const QString userInputCopy = capturedUserInput;
+                    const QString aiReplyCopy = chineseReply;
+                    QTimer::singleShot(200, this, [this, userInputCopy, aiReplyCopy]() {
+                        extractAndStoreMemory(userInputCopy, aiReplyCopy);
+                    });
+                }
 
                 //重置内容
                 m_streamRawReply.clear();
@@ -475,6 +504,7 @@ Dialog::Dialog(QWidget *parent)
 Dialog::~Dialog()
 {
     releaseSpeechHotkeyResources();
+    stopWakeWord();
     delete ui;
 }
 
@@ -608,6 +638,15 @@ void Dialog::ReloadSpeechInputConfig()
         }
     }
 #endif
+
+    // 语音唤醒
+    const bool wakeWordEnabled =
+        config.value("speechInput/WakeWord/Enable", false).toBool();
+    if (wakeWordEnabled && !m_wakeWordEnabled)
+        startWakeWord();
+    else if (!wakeWordEnabled && m_wakeWordEnabled)
+        stopWakeWord();
+    m_wakeWordEnabled = wakeWordEnabled;
 }
 
 /*显示历史记录*/
@@ -988,6 +1027,21 @@ bool Dialog::submitCurrentInput()
 /*执行提交逻辑（供屏幕捕获回调复用）*/
 bool Dialog::doSubmitCurrentInput(const QString &userInput)
 {
+    if (m_streamDisplayTimer)
+        m_streamDisplayTimer->stop();
+
+    const QString currentChar = ReadNowSelectChar();
+
+    // 系统提示词缓存：仅在角色变更或记忆更新时重建
+    if (!m_cachedSystemPrompt.isEmpty() &&
+        m_cachedCharacterForPrompt == currentChar && !m_memoryDirty)
+    {
+        // 命中缓存，跳过提示词构建
+        ai->setSystemPrompt(m_cachedSystemPrompt);
+        goto skipPromptBuild;
+    }
+
+    {
     QDir dir(ReadCharacterTachiePath());
     QStringList nameFilters;
     nameFilters << "*.png" << "*.jpg" << "*.jpeg";
@@ -1022,8 +1076,14 @@ bool Dialog::doSubmitCurrentInput(const QString &userInput)
                        "示例输出：\n"
                        "快乐|今天的天气真好呀！|今日はいい天気ですね！\n"
                        "生气|为什么一直打扰我！|なんでずっと邪魔するの！");
-    ai->setSystemPrompt(systemPrompt);
+        m_cachedSystemPrompt = systemPrompt;
+        m_cachedTachieNameList = nameListStr;
+        m_cachedCharacterForPrompt = currentChar;
+        m_memoryDirty = false;
+        ai->setSystemPrompt(systemPrompt);
+    }
 
+skipPromptBuild:
     m_lastUserInput = userInput;
     ZcJsonLib charConfig(ReadCharacterUserConfigPath());
     m_streamVitsEnabled = charConfig.value("vitsEnable").toBool();
@@ -1056,6 +1116,14 @@ bool Dialog::doSubmitCurrentInput(const QString &userInput)
 /*长按语言输入相关*/
 void Dialog::on_pushButton_input_pressed()
 {
+    // AI正在生成回复时不响应（继续按钮不可见表示生成中）
+    if (!ui->textEdit->isEnabled() && !ui->pushButton_next->isVisible())
+        return;
+
+    // 恢复输入状态并清除聊天栏
+    ui->textEdit->setEnabled(true);
+    ui->pushButton_next->hide();
+    ui->textEdit->clear();
     startSpeechRecording();
 }
 void Dialog::on_pushButton_input_released()
@@ -1095,13 +1163,23 @@ void Dialog::startSpeechRecordingFromHotkey()
 
         if (status == Qt::PermissionStatus::Denied)
         {
-            ui->textEdit->setText(QStringLiteral("麦克风权限未开启，请在系统设置中允许 ZcChat2 使用麦克风"));
+            const QString msg = QStringLiteral("麦克风权限未开启，请在系统设置中允许 ZcChat2 使用麦克风");
+            ui->textEdit->setText(msg);
+            QTimer::singleShot(2500, this, [this, msg]() {
+                if (ui->textEdit->toPlainText() == msg)
+                    ui->textEdit->clear();
+            });
             return;
         }
 
         if (status == Qt::PermissionStatus::Undetermined)
         {
-            ui->textEdit->setText(QStringLiteral("正在请求麦克风权限……"));
+            const QString msg = QStringLiteral("正在请求麦克风权限……");
+            ui->textEdit->setText(msg);
+            QTimer::singleShot(2500, this, [this, msg]() {
+                if (ui->textEdit->toPlainText() == msg)
+                    ui->textEdit->clear();
+            });
             app->requestPermission(microphonePermission, this,
                                    [this](const QPermission &permission)
                                    {
@@ -1109,8 +1187,15 @@ void Dialog::startSpeechRecordingFromHotkey()
                                            Qt::PermissionStatus::Granted)
                                            startSpeechRecordingFromHotkey();
                                        else
-                                           ui->textEdit->setText(QStringLiteral(
-                                               "麦克风权限未开启，请在系统设置中允许 ZcChat2 使用麦克风"));
+                                       {
+                                           const QString errMsg = QStringLiteral(
+                                               "麦克风权限未开启，请在系统设置中允许 ZcChat2 使用麦克风");
+                                           ui->textEdit->setText(errMsg);
+                                           QTimer::singleShot(2500, this, [this, errMsg]() {
+                                               if (ui->textEdit->toPlainText() == errMsg)
+                                                   ui->textEdit->clear();
+                                           });
+                                       }
                                    });
             return;
         }
@@ -1119,7 +1204,12 @@ void Dialog::startSpeechRecordingFromHotkey()
 
     if (QMediaDevices::defaultAudioInput().isNull())
     {
-        ui->textEdit->setText(QStringLiteral("未检测到可用麦克风"));
+        const QString msg = QStringLiteral("未检测到可用麦克风");
+        ui->textEdit->setText(msg);
+        QTimer::singleShot(2500, this, [this, msg]() {
+            if (ui->textEdit->toPlainText() == msg)
+                ui->textEdit->clear();
+        });
         return;
     }
 
@@ -1139,6 +1229,8 @@ void Dialog::startSpeechRecordingFromHotkey()
     m_isSpeechRecording = true;
     ui->textEdit->setText(QStringLiteral("录音中……"));
     m_speechRecorder->record();
+    // 启动静音检测：2.5秒无声音自动停止录音
+    m_silenceTimer->start();
 }
 
 /*结束录音*/
@@ -1146,6 +1238,7 @@ void Dialog::stopSpeechRecording()
 {
     if (!m_isSpeechRecording || !m_speechRecorder)
         return;
+    m_silenceTimer->stop();
     ui->label_name->setText(QStringLiteral("你"));
     m_speechRecorder->stop();
 }
@@ -1207,13 +1300,23 @@ QString Dialog::recognizeSpeechFromFile(const QString &filePath)
     const QString accessToken = requestBaiduAccessToken(apiKey, secretKey);
     if (accessToken.isEmpty())
     {
-        ui->textEdit->setText(QStringLiteral("百度语音识别配置不完整或 Token 获取失败"));
+        const QString msg = QStringLiteral("百度语音识别配置不完整或 Token 获取失败");
+        ui->textEdit->setText(msg);
+        QTimer::singleShot(2500, this, [this, msg]() {
+            if (ui->textEdit->toPlainText() == msg)
+                ui->textEdit->clear();
+        });
         return QString();
     }
 
     if (!file.open(QIODevice::ReadOnly))
     {
-        ui->textEdit->setText(QStringLiteral("无法读取录音文件"));
+        const QString msg = QStringLiteral("无法读取录音文件");
+        ui->textEdit->setText(msg);
+        QTimer::singleShot(2500, this, [this, msg]() {
+            if (ui->textEdit->toPlainText() == msg)
+                ui->textEdit->clear();
+        });
         return QString();
     }
     const QByteArray audioData = file.readAll();
@@ -1257,7 +1360,14 @@ QString Dialog::recognizeSpeechFromFile(const QString &filePath)
     loop.exec();
 
     if (recognizedText.isEmpty())
-        ui->textEdit->setText(QStringLiteral("没有识别到有效语音"));
+    {
+        const QString msg = QStringLiteral("没有识别到有效语音");
+        ui->textEdit->setText(msg);
+        QTimer::singleShot(2500, this, [this, msg]() {
+            if (ui->textEdit->toPlainText() == msg)
+                ui->textEdit->clear();
+        });
+    }
     return recognizedText;
 }
 
@@ -1339,6 +1449,7 @@ void Dialog::loadMemory()
     {
         m_memoryData = QJsonObject();
         // 创建初始空记忆文件，确保文件在首次使用时就被创建
+        m_memoryDirty = true;
         saveMemory();
         return;
     }
@@ -1356,6 +1467,13 @@ void Dialog::loadMemory()
         m_memoryData = doc.object();
     else
         m_memoryData = QJsonObject();
+}
+
+/* 使系统提示词缓存失效（记忆或角色变更时调用） */
+void Dialog::invalidatePromptCache()
+{
+    m_cachedSystemPrompt.clear();
+    m_memoryDirty = false;
 }
 
 /* 保存记忆文件 */
@@ -1579,8 +1697,10 @@ void Dialog::extractAndStoreMemory(const QString &userInput,
                     }
                 }
 
-                if (changed)
+                if (changed) {
+                    m_memoryDirty = true;
                     saveMemory();
+                }
 
                 memoryAi->deleteLater();
             });
@@ -1600,19 +1720,19 @@ void Dialog::extractAndStoreMemory(const QString &userInput,
 /*截图按钮点击*/
 void Dialog::on_pushButton_screenCapture_clicked()
 {
-    if (!ui->textEdit->isEnabled())
+    // AI正在生成回复时不响应（继续按钮不可见表示生成中）
+    if (!ui->textEdit->isEnabled() && !ui->pushButton_next->isVisible())
         return;
 
-    const QString userInput = ui->textEdit->toPlainText().trimmed();
-    const QString message = userInput.isEmpty()
-        ? QStringLiteral("帮我看看屏幕上的内容")
-        : userInput;
+    // 恢复输入状态并清除聊天栏（无论是AI回复残留还是用户输入）
+    ui->textEdit->setEnabled(true);
+    ui->pushButton_next->hide();
+    ui->textEdit->clear();
 
     ui->label_name->setText(QStringLiteral("她"));
     ui->textEdit->setEnabled(false);
-    ui->pushButton_next->hide();
     ui->textEdit->setText(QStringLiteral("正在分析屏幕内容……"));
-    m_lastUserInput = message;
+    m_lastUserInput = QStringLiteral("帮我看看屏幕上的内容");
     captureAndAnalyzeScreen();
 }
 
@@ -1688,7 +1808,12 @@ void Dialog::captureAndAnalyzeScreen()
     const QByteArray jpegData = captureScreenToJpeg();
     if (jpegData.isEmpty())
     {
-        ui->textEdit->setText(QStringLiteral("屏幕捕获失败，请重试"));
+        const QString msg = QStringLiteral("屏幕捕获失败，请重试");
+        ui->textEdit->setText(msg);
+        QTimer::singleShot(2500, this, [this, msg]() {
+            if (ui->textEdit->toPlainText() == msg)
+                ui->textEdit->clear();
+        });
         ui->textEdit->setEnabled(true);
         ui->label_name->setText(QStringLiteral("你"));
         ui->pushButton_next->show();
@@ -1914,4 +2039,99 @@ void Dialog::compressContextHistory()
             });
 
     compressAi->chat(prompt);
+}
+
+/*初始化语音唤醒*/
+void Dialog::initWakeWord()
+{
+    ZcJsonLib config(JsonSettingPath);
+    m_wakeWordEnabled =
+        config.value("speechInput/WakeWord/Enable", false).toBool();
+
+    if (m_wakeWordEnabled)
+        startWakeWord();
+}
+
+/*启动语音唤醒*/
+void Dialog::startWakeWord()
+{
+    if (m_wakeWordDetector)
+        return;
+
+    m_wakeWordDetector = new WakeWordDetector(this);
+
+    // 默认模型路径（使用模型内置关键词：小爱同学、你好问问等）
+    QString modelDir =
+        QCoreApplication::applicationDirPath() + "/models/kws";
+    QStringList keywords;
+    // 使用模型内置关键词，无需额外指定
+    // 如需自定义，可在此添加：keywords << QStringLiteral("嗨小宠");
+
+    ZcJsonLib config(JsonSettingPath);
+    const float threshold = static_cast<float>(
+        config.value("speechInput/WakeWord/Sensitivity", 0.25).toDouble());
+
+    if (m_wakeWordDetector->init(modelDir, keywords, threshold))
+    {
+        connect(m_wakeWordDetector, &WakeWordDetector::wakeWordDetected,
+                this, &Dialog::onWakeWordDetected);
+        connect(m_wakeWordDetector, &WakeWordDetector::audioLevel,
+                this, [this](float rms) {
+                    if (!m_isSpeechRecording)
+                        return;
+                    // 录音中检测到语音活动则重置静音计时器
+                    if (rms > kSilenceThreshold)
+                    {
+                        qDebug() << "[SilenceDetect] speech rms:" << rms
+                                 << "> threshold:" << kSilenceThreshold
+                                 << "- resetting timer";
+                        m_silenceTimer->start();
+                    }
+                });
+        m_wakeWordDetector->start();
+        qDebug() << "Wake word detection started";
+    }
+    else
+    {
+        qWarning() << "Failed to initialize wake word detector";
+        delete m_wakeWordDetector;
+        m_wakeWordDetector = nullptr;
+    }
+}
+
+/*停止语音唤醒*/
+void Dialog::stopWakeWord()
+{
+    if (m_wakeWordDetector)
+    {
+        m_wakeWordDetector->stop();
+        delete m_wakeWordDetector;
+        m_wakeWordDetector = nullptr;
+        qDebug() << "Wake word detection stopped";
+    }
+}
+
+/*唤醒词检测回调*/
+void Dialog::onWakeWordDetected(const QString &keyword)
+{
+    qDebug() << "Wake word detected:" << keyword;
+
+    // AI正在生成回复时不响应（继续按钮不可见表示生成中）
+    if (!ui->textEdit->isEnabled() && !ui->pushButton_next->isVisible())
+        return;
+    if (m_isSpeechRecording || m_isSpeechRecognizing)
+        return;
+
+    // 恢复输入状态（AI回复残留文字清除）
+    ui->textEdit->setEnabled(true);
+    ui->pushButton_next->hide();
+    ui->textEdit->clear();
+
+    QMetaObject::invokeMethod(
+        this,
+        [this]()
+        {
+            startSpeechRecordingFromHotkey();
+        },
+        Qt::QueuedConnection);
 }

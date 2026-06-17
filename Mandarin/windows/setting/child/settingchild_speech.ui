@@ -241,6 +241,40 @@
         </widget>
        </item>
        <item>
+       <widget class="ElaScrollPageArea" name="widget_WakeWord" native="true">
+         <property name="toolTip">
+          <string>开启后，说出唤醒词即可自动开始录音（需要下载语音唤醒模型）</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_WakeWord" stretch="1,1">
+          <property name="leftMargin">
+           <number>15</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <item>
+           <widget class="ElaText" name="label_WakeWord">
+            <property name="font">
+             <font>
+              <pointsize>12</pointsize>
+             </font>
+            </property>
+            <property name="text">
+             <string>启用语音唤醒（Beta）</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="ElaToggleSwitch" name="ToggleSwitch_WakeWordEnable" native="true">
+            <property name="toolTip">
+             <string>启用语音唤醒功能（说"嗨小宠"开始录音）</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>

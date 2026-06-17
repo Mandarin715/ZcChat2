@@ -25,6 +25,8 @@ SettingChild_Speech::SettingChild_Speech(QWidget *parent)
     const bool globalHotkeyEnable =
         config.value("speechInput/GlobalHotkey/Enable", false).toBool();
     ui->ToggleSwitch_GlobalHotkeyEnable->setIsToggled(globalHotkeyEnable);
+    ui->ToggleSwitch_WakeWordEnable->setIsToggled(
+        config.value("speechInput/WakeWord/Enable", false).toBool());
     ui->keyBinder_GlobalHotkey->setBinderKeyText(
         config.value("speechInput/GlobalHotkey/BinderText").toString());
     ui->keyBinder_GlobalHotkey->setNativeVirtualBinderKey(
@@ -189,4 +191,11 @@ void SettingChild_Speech::refreshGlobalHotkeyBinderState()
     ui->keyBinder_GlobalHotkey->setToolTip(
         isEnabled ? "点击后会弹出绑定窗口，按下按键并确认即可保存"
                   : "可以先绑定录音按键，启用全局热键后生效");
+}
+
+void SettingChild_Speech::on_ToggleSwitch_WakeWordEnable_toggled(bool checked)
+{
+    ZcJsonLib config(JsonSettingPath);
+    config.setValue("speechInput/WakeWord/Enable", checked);
+    emit speechConfigChanged();
 }

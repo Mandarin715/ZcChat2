@@ -16,6 +16,7 @@ class QAudioOutput;
 class QMediaPlayer;
 class QNetworkAccessManager;
 class QTemporaryFile;
+class WakeWordDetector;
 
 namespace Ui
 {
@@ -93,6 +94,7 @@ class Dialog : public QWidget
     QString m_lastUserInput;
     QString m_streamRawReply;
     QString m_streamDisplayedChinese;
+    QTimer *m_streamDisplayTimer = nullptr; // 流式显示防抖定时器
     bool m_isSpeechRecording = false;
     bool m_isSpeechRecognizing = false;
     bool m_globalSpeechHotkeyEnabled = false; //全局录音热键是否启用
@@ -115,6 +117,12 @@ class Dialog : public QWidget
     bool submitCurrentInput();
     // 记忆功能
     QJsonObject m_memoryData;
+    // 系统提示词缓存（避免每次发消息重复构建）
+    QString m_cachedSystemPrompt;
+    QString m_cachedTachieNameList;
+    QString m_cachedCharacterForPrompt;
+    bool m_memoryDirty = true;
+    void invalidatePromptCache();
     void loadMemory();
     void saveMemory() const;
     QString buildMemoryContext() const;
@@ -128,6 +136,17 @@ class Dialog : public QWidget
     QString requestBaiduAccessToken(const QString &apiKey,
                                     const QString &secretKey);
     void releaseSpeechHotkeyResources();
+    // 语音唤醒
+    WakeWordDetector *m_wakeWordDetector = nullptr;
+    bool m_wakeWordEnabled = false;
+    // 静音检测：自动结束录音
+    QTimer *m_silenceTimer = nullptr;
+    static constexpr float kSilenceThreshold = 0.03f; // RMS低于此值视为静音
+    static constexpr int kSilenceTimeoutMs = 2500;     // 静音超时2.5秒
+    void initWakeWord();
+    void startWakeWord();
+    void stopWakeWord();
+    void onWakeWordDetected(const QString &keyword);
     // 多模态屏幕捕获
     bool m_screenCaptureEnabled = false;
     bool m_visionInFlight = false;

@@ -136,6 +136,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         utils/AnimePluginManager.h utils/AnimePluginManager.cpp
         windows/tachie/tachie.h windows/tachie/tachie.cpp windows/tachie/tachie.ui
         utils/DragHelper.h utils/DragHelper.cpp
+        utils/WakeWordDetector.h utils/WakeWordDetector.cpp
         windows/setting/child/settingchild_llm.h windows/setting/child/settingchild_llm.cpp windows/setting/child/settingchild_llm.ui
         windows/setting/child/settingchild_char.h windows/setting/child/settingchild_char.cpp windows/setting/child/settingchild_char.ui
         windows/setting/child/settingchild_vits.h windows/setting/child/settingchild_vits.cpp windows/setting/child/settingchild_vits.ui
@@ -171,6 +172,7 @@ target_include_directories(ZcChat2 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}
     ${ZCAILIB_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/include
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ZcJsonLib/include
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ZcWidgetTools/include
     ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ElaWidgetTools/include
@@ -228,6 +230,7 @@ endif()
 if(WIN32)
     target_link_libraries(ZcChat2 PRIVATE
         ${ZCAILIB_WIN_LIB}
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/lib/sherpa-onnx-cxx-api.lib
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ElaWidgetTools/lib/elawidgettools.lib
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ZcWidgetTools/lib/ZcWidgetTools.lib
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ZcJsonLib/lib/ZcJsonLib.lib
@@ -237,6 +240,18 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${ZCAILIB_WIN_DLL}
             $<TARGET_FILE_DIR:ZcChat2>/ZcAiLib.dll
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/bin/sherpa-onnx-cxx-api.dll
+            $<TARGET_FILE_DIR:ZcChat2>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/bin/sherpa-onnx-c-api.dll
+            $<TARGET_FILE_DIR:ZcChat2>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/bin/onnxruntime.dll
+            $<TARGET_FILE_DIR:ZcChat2>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/sherpa-onnx/bin/onnxruntime_providers_shared.dll
+            $<TARGET_FILE_DIR:ZcChat2>
     )
 endif()
 

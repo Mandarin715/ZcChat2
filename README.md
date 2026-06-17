@@ -6,7 +6,7 @@
 
 # ZcChat2 — AI 桌面宠物
 
-🌟 一个模仿 Galgame 演出效果的 AI 桌宠，基于 [ZcChat](https://github.com/Zao-chen/ZcChat) 的重制版，由 [Mandarin715](https://github.com/Mandarin715) 维护并持续扩展。
+🌟 一个模仿 Galgame 演出效果的 AI 桌宠
 
 <img width="1045" height="593" alt="screenshot" src="https://github.com/user-attachments/assets/49439b92-308f-4ecd-b8cc-a1538153752c" />
 
@@ -14,7 +14,6 @@
 [![GitHub License](https://img.shields.io/github/license/Mandarin715/ZcChat2?color=ef4444&style=for-the-badge)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6366f1?style=for-the-badge)]()
 
-> 本项目是 [Zao-chen/ZcChat2](https://github.com/Zao-chen/ZcChat2) 的独立分支，在原有功能基础上增加了长期记忆等特性。上游项目的文档与社区资源同样适用于本分支。
 
 ---
 

@@ -136,5 +136,3 @@
 ## 📄 许可证
 
 本项目基于 [GPL v3](LICENSE) 开源协议发布。
-
-*原项目 © Zao-chen | 分支维护 © Mandarin715*

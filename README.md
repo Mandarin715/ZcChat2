@@ -87,8 +87,10 @@
 
 ### Step 4：导入角色
 
-1. 在 [角色分享](https://github.com/Zao-chen/ZcChat2/discussions/categories/%E8%A7%92%E8%89%B2%E5%88%86%E4%BA%AB) 下载角色包
+1. 在 [Release](https://github.com/Mandarin715/ZcChat2/releases) 下载角色包（如 Atri.zip）
 2. 设置 → 角色设置 → 导入
+
+> 更多角色可在 [Discussions](https://github.com/Mandarin715/ZcChat2/discussions) 分享和获取
 
 ---
 

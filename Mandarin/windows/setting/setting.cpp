@@ -66,6 +66,8 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
             dialog, &Dialog::ReloadScreenCaptureConfig); //刷新屏幕捕获配置
     connect(settingchild_speechWin, &SettingChild_Speech::speechConfigChanged,
             dialog, &Dialog::ReloadSpeechInputConfig); //刷新语音输入配置
+    connect(settingchild_speechWin, &SettingChild_Speech::speechConfigChanged,
+            dialog, &Dialog::ReloadContinuousHotkeyConfig); //刷新连续对话配置
     connect(settingchild_generalWin, &SettingChild_General::generalConfigChanged,
             dialog, &Dialog::ReloadGeneralConfig); //刷新通用配置
 }

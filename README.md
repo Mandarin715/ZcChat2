@@ -76,8 +76,9 @@
 
 1. 下载 [vits-simple-api](https://github.com/Artrajz/vits-simple-api/releases)（Windows CPU 版本）
 2. 解压到桌宠目录下的 `vits-simple-api/` 文件夹
-3. 将角色语音模型放入 `vits-simple-api/models/`
-4. 重新双击 `启动.bat`，脚本自动检测并开启语音模式
+3. 在 [Release](https://github.com/Mandarin715/ZcChat2/releases) 下载 `SomeGalActor_Vits.zip`（语音模型）
+4. 解压到 `vits-simple-api/models/SomeGalActor_Vits/`
+5. 重新双击 `启动.bat`，脚本自动检测并开启语音模式
 
 ### Step 3：配置 API Key
 

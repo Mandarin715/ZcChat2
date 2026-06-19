@@ -32,11 +32,26 @@ SettingChild_Speech::SettingChild_Speech(QWidget *parent)
     ui->keyBinder_GlobalHotkey->setNativeVirtualBinderKey(
         static_cast<quint32>(
             config.value("speechInput/GlobalHotkey/NativeKey", 0).toInteger()));
+
+    // 连续对话快捷键
+    ui->ToggleSwitch_ContinuousHotkeyEnable->setIsToggled(
+        config.value("speechInput/ContinuousHotkey/Enable", false).toBool());
+    ui->keyBinder_ContinuousHotkey->setBinderKeyText(
+        config.value("speechInput/ContinuousHotkey/BinderText").toString());
+    ui->keyBinder_ContinuousHotkey->setNativeVirtualBinderKey(
+        static_cast<quint32>(
+            config.value("speechInput/ContinuousHotkey/NativeKey", 0).toInteger()));
+    ui->spinBox_ContinuousAudioDelay->setValue(
+        config.value("speechInput/ContinuousAudioDelayMs", 2500).toInt());
+
     refreshBaiduStatus();
     refreshGlobalHotkeyBinderState();
+    refreshContinuousHotkeyBinderState();
     //ElaKeyBinder构造时会用window()创建原生弹窗，延迟重建可确保父窗口已稳定。
     QTimer::singleShot(0, this,
                        &SettingChild_Speech::initializeNativeGlobalHotkeyBinder);
+    QTimer::singleShot(0, this,
+                       &SettingChild_Speech::initializeNativeContinuousHotkeyBinder);
 }
 
 SettingChild_Speech::~SettingChild_Speech()
@@ -197,5 +212,100 @@ void SettingChild_Speech::on_ToggleSwitch_WakeWordEnable_toggled(bool checked)
 {
     ZcJsonLib config(JsonSettingPath);
     config.setValue("speechInput/WakeWord/Enable", checked);
+    emit speechConfigChanged();
+}
+
+/*连续对话热键开关*/
+void SettingChild_Speech::on_ToggleSwitch_ContinuousHotkeyEnable_toggled(bool checked)
+{
+    ZcJsonLib config(JsonSettingPath);
+    config.setValue("speechInput/ContinuousHotkey/Enable", checked);
+    refreshContinuousHotkeyBinderState();
+    emit speechConfigChanged();
+}
+
+void SettingChild_Speech::on_keyBinder_ContinuousHotkey_binderKeyTextChanged(
+    QString binderKeyText)
+{
+    Q_UNUSED(binderKeyText)
+    saveContinuousHotkeyConfig();
+}
+
+void SettingChild_Speech::on_keyBinder_ContinuousHotkey_nativeVirtualBinderKeyChanged(
+    quint32 binderKey)
+{
+    Q_UNUSED(binderKey)
+    saveContinuousHotkeyConfig();
+}
+
+void SettingChild_Speech::initializeNativeContinuousHotkeyBinder()
+{
+    auto *layout = ui->keyBinder_ContinuousHotkey->parentWidget()->layout();
+    if (!layout)
+        return;
+
+    const QString binderText = ui->keyBinder_ContinuousHotkey->getBinderKeyText();
+    const quint32 nativeKey =
+        ui->keyBinder_ContinuousHotkey->getNativeVirtualBinderKey();
+    const int index = layout->indexOf(ui->keyBinder_ContinuousHotkey);
+    if (index < 0)
+        return;
+
+    auto *oldBinder = ui->keyBinder_ContinuousHotkey;
+    auto *nativeBinder = new ElaKeyBinder(oldBinder->parentWidget());
+    nativeBinder->setObjectName(oldBinder->objectName());
+    nativeBinder->setSizePolicy(oldBinder->sizePolicy());
+    nativeBinder->setToolTip(oldBinder->toolTip());
+
+    layout->replaceWidget(oldBinder, nativeBinder);
+    oldBinder->deleteLater();
+    ui->keyBinder_ContinuousHotkey = nativeBinder;
+
+    {
+        const QSignalBlocker blocker(ui->keyBinder_ContinuousHotkey);
+        ui->keyBinder_ContinuousHotkey->setBinderKeyText(binderText);
+        ui->keyBinder_ContinuousHotkey->setNativeVirtualBinderKey(nativeKey);
+    }
+
+    connect(ui->keyBinder_ContinuousHotkey, &ElaKeyBinder::binderKeyTextChanged,
+            this,
+            &SettingChild_Speech::on_keyBinder_ContinuousHotkey_binderKeyTextChanged);
+    connect(ui->keyBinder_ContinuousHotkey,
+            &ElaKeyBinder::nativeVirtualBinderKeyChanged, this,
+            &SettingChild_Speech::
+                on_keyBinder_ContinuousHotkey_nativeVirtualBinderKeyChanged);
+    refreshContinuousHotkeyBinderState();
+}
+
+void SettingChild_Speech::saveContinuousHotkeyConfig()
+{
+    ZcJsonLib config(JsonSettingPath);
+    config.setValue("speechInput/ContinuousHotkey/BinderText",
+                    ui->keyBinder_ContinuousHotkey->getBinderKeyText());
+    config.setValue("speechInput/ContinuousHotkey/NativeKey",
+                    static_cast<qint64>(
+                        ui->keyBinder_ContinuousHotkey->getNativeVirtualBinderKey()));
+    refreshContinuousHotkeyBinderState();
+    emit speechConfigChanged();
+}
+
+void SettingChild_Speech::refreshContinuousHotkeyBinderState()
+{
+    const bool isEnabled =
+        ui->ToggleSwitch_ContinuousHotkeyEnable->getIsToggled();
+    ui->keyBinder_ContinuousHotkey->setEnabled(true);
+
+    if (ui->keyBinder_ContinuousHotkey->getBinderKeyText().trimmed().isEmpty())
+        ui->keyBinder_ContinuousHotkey->setBinderKeyText("未绑定");
+
+    ui->keyBinder_ContinuousHotkey->setToolTip(
+        isEnabled ? "按下快捷键进入连续对话模式，再次按下退出"
+                  : "可以先绑定按键，启用后生效");
+}
+
+void SettingChild_Speech::on_spinBox_ContinuousAudioDelay_valueChanged(int value)
+{
+    ZcJsonLib config(JsonSettingPath);
+    config.setValue("speechInput/ContinuousAudioDelayMs", value);
     emit speechConfigChanged();
 }

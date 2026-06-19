@@ -13,8 +13,10 @@
 
 class QAudioInput;
 class QAudioOutput;
+class QAudioSource;
 class QMediaPlayer;
 class QNetworkAccessManager;
+class QIODevice;
 class QTemporaryFile;
 class WakeWordDetector;
 
@@ -39,6 +41,7 @@ class Dialog : public QWidget
     void ReloadGeneralConfig();
     void ReloadSpeechInputConfig();
     void ReloadScreenCaptureConfig();
+    void ReloadContinuousHotkeyConfig();
     bool handleSpeechHotkeyEvent(quint32 vkCode, bool isKeyDown, bool isKeyUp);
 
   private slots:
@@ -100,6 +103,15 @@ class Dialog : public QWidget
     bool m_globalSpeechHotkeyEnabled = false; //全局录音热键是否启用
     bool m_globalSpeechHotkeyPressed = false; //当前热键是否处于按下录音中
     quint32 m_globalSpeechHotkeyNativeKey = 0; //Ela绑定得到的原生按键值
+    // 连续对话模式独立快捷键
+    bool m_continuousHotkeyEnabled = false;
+    quint32 m_continuousHotkeyNativeKey = 0;
+    int m_continuousAudioDelayMs = 2500;
+    bool m_continuousMode = false;
+    QTimer *m_continuousSilenceTimer = nullptr;
+    void enterContinuousMode();
+    void exitContinuousMode();
+    bool isAllVitsDone() const;
     bool m_streamVitsEnabled = false;
     bool m_streamVitsSentenceSplitEnabled = true;
     int m_streamSynthCursor = 0;
@@ -110,9 +122,6 @@ class Dialog : public QWidget
     QMediaPlayer *m_vitsPlayer = nullptr;
     QAudioOutput *m_vitsAudioOutput = nullptr;
     QTemporaryFile *m_vitsTempFile = nullptr;
-    QMediaRecorder *m_speechRecorder = nullptr;
-    QMediaCaptureSession m_speechCaptureSession;
-    QAudioInput *m_speechAudioInput = nullptr;
     void tryStartNextVitsPlayback();
     bool submitCurrentInput();
     // 记忆功能
@@ -128,9 +137,14 @@ class Dialog : public QWidget
     QString buildMemoryContext() const;
     void extractAndStoreMemory(const QString &userInput, const QString &aiReply);
     void compressContextHistory();
+    // 语音输入（QAudioSource直录PCM，录音+静音检测同一音源）
+    QAudioSource *m_speechAudioSource = nullptr;
+    QIODevice *m_speechAudioDevice = nullptr;
+    QByteArray m_capturedAudioData;
     void startSpeechRecording();
     void startSpeechRecordingFromHotkey();
     void stopSpeechRecording();
+    void processCapturedAudio();
     QString speechRecordFilePath() const;
     QString recognizeSpeechFromFile(const QString &filePath);
     QString requestBaiduAccessToken(const QString &apiKey,
@@ -140,9 +154,13 @@ class Dialog : public QWidget
     WakeWordDetector *m_wakeWordDetector = nullptr;
     bool m_wakeWordEnabled = false;
     // 静音检测：自动结束录音
-    QTimer *m_silenceTimer = nullptr;
-    static constexpr float kSilenceThreshold = 0.03f; // RMS低于此值视为静音
-    static constexpr int kSilenceTimeoutMs = 2500;     // 静音超时2.5秒
+    QTimer *m_silenceTimer = nullptr;     // 4秒单次，超时触发停止
+    QTimer *m_silencePollTimer = nullptr; // 100ms轮询读取音频+算RMS
+    int m_silentFrameCount = 0;           // 连续静音帧计数
+    static constexpr float kSilenceThreshold = 0.005f;
+    static constexpr int kSilenceTimeoutMs = 2500;
+    static constexpr int kSilencePollMs = 100;
+    static constexpr int kSilenceFrameMax = 25;    // 25帧 * 100ms = 2.5秒
     void initWakeWord();
     void startWakeWord();
     void stopWakeWord();

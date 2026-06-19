@@ -23,6 +23,7 @@
 #include <QAudioDevice>
 #include <QAudioInput>
 #include <QAudioOutput>
+#include <QAudioSource>
 #include <QBuffer>
 #include <QEventLoop>
 #include <QGraphicsOpacityEffect>
@@ -322,42 +323,39 @@ Dialog::Dialog(QWidget *parent)
                         m_vitsTempFile = nullptr;
                     }
                     tryStartNextVitsPlayback();
+
+                    // 连续对话模式：全部VITS播完后自动开始下一轮录音
+                    if (m_continuousMode)
+                    {
+                        const bool allDone = isAllVitsDone();
+                        qDebug() << "[Continuous] VITS stopped | allDone:" << allDone
+                                 << "| recording:" << m_isSpeechRecording
+                                 << "| recognizing:" << m_isSpeechRecognizing
+                                 << "| readyFiles:" << m_vitsReadyFiles.size()
+                                 << "| reqInFlight:" << m_vitsRequestInFlight;
+                        if (allDone && !m_isSpeechRecording && !m_isSpeechRecognizing)
+                        {
+                            qDebug() << "Continuous mode: VITS stopped, waiting"
+                                     << m_continuousAudioDelayMs << "ms...";
+                            QTimer::singleShot(m_continuousAudioDelayMs, this, [this]() {
+                                if (!ui->textEdit->isEnabled() && ui->pushButton_next->isVisible())
+                                {
+                                    ui->textEdit->setEnabled(true);
+                                    ui->pushButton_next->hide();
+                                    ui->textEdit->clear();
+                                }
+                                startSpeechRecordingFromHotkey();
+                            });
+                        }
+                    }
                 }
-            });
-    /*语音输入初始化*/
-    m_speechRecorder = new QMediaRecorder(this);
-    m_speechAudioInput = new QAudioInput(this);
-    m_speechCaptureSession.setRecorder(m_speechRecorder);
-    m_speechCaptureSession.setAudioInput(m_speechAudioInput);
-    if (m_speechAudioInput)
-        m_speechAudioInput->setDevice(QMediaDevices::defaultAudioInput());
-    //录音结束后统一进入识别，再决定是否直接复用现有发送链路
-    connect(m_speechRecorder, &QMediaRecorder::recorderStateChanged, this,
-            [this](QMediaRecorder::RecorderState state)
-            {
-                if (state != QMediaRecorder::StoppedState || !m_isSpeechRecording)
-                    return;
-
-                m_isSpeechRecording = false;
-                m_isSpeechRecognizing = true;
-                const QString recognizedText =
-                    recognizeSpeechFromFile(speechRecordFilePath()).trimmed();
-                m_isSpeechRecognizing = false;
-                if (recognizedText.isEmpty())
-                    return;
-
-                ui->label_name->setText(QStringLiteral("你"));
-                ui->textEdit->setEnabled(true);
-                ui->textEdit->setText(recognizedText);
-                if (ui->checkBox_autoInput->isChecked())
-                    submitCurrentInput();
             });
     ReloadAIConfig();
     ReloadGeneralConfig();
     ReloadSpeechInputConfig();
     initWakeWord();
 
-    // 静音检测定时器：2.5秒无声音自动停止录音
+    // 静音检测定时器：4秒无声音自动停止录音
     m_silenceTimer = new QTimer(this);
     m_silenceTimer->setSingleShot(true);
     m_silenceTimer->setInterval(kSilenceTimeoutMs);
@@ -366,6 +364,72 @@ Dialog::Dialog(QWidget *parent)
         stopSpeechRecording();
     });
 
+    // 轮询定时器：每100ms读取音频+检测语音活动
+    m_silencePollTimer = new QTimer(this);
+    m_silencePollTimer->setInterval(kSilencePollMs);
+    connect(m_silencePollTimer, &QTimer::timeout, this, [this]() {
+        if (!m_isSpeechRecording || !m_speechAudioDevice)
+            return;
+        bool speechDetected = false;
+        float maxRms = 0.0f;
+        while (m_speechAudioDevice->bytesAvailable() > 0)
+        {
+            const qint64 avail = m_speechAudioDevice->bytesAvailable();
+            const qint64 toRead = qMin(avail, static_cast<qint64>(3200));
+            QByteArray data = m_speechAudioDevice->read(toRead);
+            if (data.isEmpty())
+                break;
+            m_capturedAudioData.append(data);
+            const int16_t *raw =
+                reinterpret_cast<const int16_t *>(data.constData());
+            const int num = data.size() / 2;
+            double sumSq = 0.0;
+            for (int i = 0; i < num; ++i)
+            {
+                const double s = raw[i] / 32768.0;
+                sumSq += s * s;
+            }
+            const float rms =
+                num > 0 ? static_cast<float>(std::sqrt(sumSq / num)) : 0.0f;
+            if (rms > maxRms)
+                maxRms = rms;
+            if (rms > kSilenceThreshold)
+                speechDetected = true;
+        }
+        if (speechDetected)
+        {
+            if (m_silentFrameCount > 0)
+                qDebug() << "[Poll] SPEECH | maxRms:" << maxRms
+                         << "| bytes:" << m_capturedAudioData.size();
+            m_silentFrameCount = 0;
+        }
+        else
+        {
+            m_silentFrameCount++;
+            if (m_silentFrameCount % 10 == 1)
+                qDebug() << "[Poll] silence frame" << m_silentFrameCount
+                         << "| maxRms:" << maxRms
+                         << "| bytes:" << m_capturedAudioData.size()
+                         << "| threshold:" << kSilenceThreshold;
+        }
+        // 连续静音达到上限 → 停止录音
+        if (m_silentFrameCount >= kSilenceFrameMax)
+        {
+            qDebug() << "Silence detected:" << m_silentFrameCount << "frames, stopping";
+            stopSpeechRecording();
+        }
+    });
+
+    // 连续对话静默退出：2分钟无语音活动自动退出
+    m_continuousSilenceTimer = new QTimer(this);
+    m_continuousSilenceTimer->setSingleShot(true);
+    m_continuousSilenceTimer->setInterval(120000);
+    connect(m_continuousSilenceTimer, &QTimer::timeout, this, [this]() {
+        qDebug() << "Continuous mode: 2-min silence timeout, exiting";
+        exitContinuousMode();
+    });
+
+    ReloadContinuousHotkeyConfig();
     ReloadScreenCaptureConfig();
     loadContextHistory();
     loadMemory();
@@ -480,6 +544,31 @@ Dialog::Dialog(QWidget *parent)
                     QTimer::singleShot(200, this, [this, userInputCopy, aiReplyCopy]() {
                         extractAndStoreMemory(userInputCopy, aiReplyCopy);
                     });
+                }
+
+                // 连续对话模式兜底：VITS未播放时直接开始下一轮录音
+                if (m_continuousMode)
+                {
+                    const bool allDone = isAllVitsDone();
+                    qDebug() << "[Continuous] replyReceived | allDone:" << allDone
+                             << "| recording:" << m_isSpeechRecording
+                             << "| recognizing:" << m_isSpeechRecognizing
+                             << "| readyFiles:" << m_vitsReadyFiles.size()
+                             << "| reqInFlight:" << m_vitsRequestInFlight;
+                    if (allDone && !m_isSpeechRecording && !m_isSpeechRecognizing)
+                    {
+                        qDebug() << "Continuous mode: no VITS audio, starting next recording";
+                        QTimer::singleShot(500, this, [this]() {
+                            // 恢复输入状态（清除AI回复残留文字）
+                            if (!ui->textEdit->isEnabled() && ui->pushButton_next->isVisible())
+                            {
+                                ui->textEdit->setEnabled(true);
+                                ui->pushButton_next->hide();
+                                ui->textEdit->clear();
+                            }
+                            startSpeechRecordingFromHotkey();
+                        });
+                    }
                 }
 
                 //重置内容
@@ -647,6 +736,31 @@ void Dialog::ReloadSpeechInputConfig()
     else if (!wakeWordEnabled && m_wakeWordEnabled)
         stopWakeWord();
     m_wakeWordEnabled = wakeWordEnabled;
+}
+
+/*重载连续对话快捷键配置*/
+void Dialog::ReloadContinuousHotkeyConfig()
+{
+    ZcJsonLib config(JsonSettingPath);
+    const bool enable =
+        config.value("speechInput/ContinuousHotkey/Enable", false).toBool();
+    const quint32 nativeKey = static_cast<quint32>(
+        config.value("speechInput/ContinuousHotkey/NativeKey", 0).toInteger());
+
+    m_continuousHotkeyNativeKey = nativeKey;
+    m_continuousHotkeyEnabled = enable && nativeKey != 0;
+    m_continuousAudioDelayMs =
+        config.value("speechInput/ContinuousAudioDelayMs", 2500).toInt();
+
+#ifdef Q_OS_WIN
+    // 如果连续对话热键启用但钩子尚未安装，安装键盘钩子
+    if (m_continuousHotkeyEnabled && !g_speechHotkeyHook)
+    {
+        g_speechHotkeyOwner = this;
+        g_speechHotkeyHook =
+            SetWindowsHookExW(WH_KEYBOARD_LL, SpeechHotkeyHookProc, nullptr, 0);
+    }
+#endif
 }
 
 /*显示历史记录*/
@@ -998,6 +1112,10 @@ bool Dialog::submitCurrentInput()
         return false;
     }
 
+    // 连续对话模式：每次有效发言都重置2分钟静默计时器
+    if (m_continuousMode)
+        m_continuousSilenceTimer->start();
+
     // 屏幕捕获关键词检测
     if (m_screenCaptureEnabled)
     {
@@ -1150,7 +1268,7 @@ void Dialog::startSpeechRecording()
 void Dialog::startSpeechRecordingFromHotkey()
 {
     if (!ui->textEdit->isEnabled() || m_isSpeechRecording ||
-        m_isSpeechRecognizing || !m_speechRecorder || !m_speechAudioInput)
+        m_isSpeechRecognizing)
         return;
 
 #ifdef Q_OS_MACOS
@@ -1213,34 +1331,155 @@ void Dialog::startSpeechRecordingFromHotkey()
         return;
     }
 
-    //录音文件统一落到临时目录，识别完成后直接读取
-    m_speechAudioInput->setDevice(QMediaDevices::defaultAudioInput());
-    QDir().mkpath(QFileInfo(speechRecordFilePath()).absolutePath());
+    // 使用QAudioSource直录PCM（录音+静音检测同一音源，无冲突）
+    QAudioFormat format;
+    format.setSampleRate(16000);
+    format.setChannelCount(1);
+    format.setSampleFormat(QAudioFormat::Int16);
 
-    QMediaFormat format;
-    format.setAudioCodec(QMediaFormat::AudioCodec::AAC);
-    m_speechRecorder->setMediaFormat(format);
-    m_speechRecorder->setAudioSampleRate(16000);
-    m_speechRecorder->setAudioChannelCount(1);
-    m_speechRecorder->setQuality(QMediaRecorder::HighQuality);
-    m_speechRecorder->setOutputLocation(
-        QUrl::fromLocalFile(speechRecordFilePath()));
+    QAudioDevice device = QMediaDevices::defaultAudioInput();
+    m_speechAudioSource = new QAudioSource(device, format, this);
+    m_speechAudioDevice = m_speechAudioSource->start();
+    if (!m_speechAudioDevice)
+    {
+        delete m_speechAudioSource;
+        m_speechAudioSource = nullptr;
+        return;
+    }
+
+    m_capturedAudioData.clear();
+    m_silentFrameCount = 0;
 
     m_isSpeechRecording = true;
     ui->textEdit->setText(QStringLiteral("录音中……"));
-    m_speechRecorder->record();
-    // 启动静音检测：2.5秒无声音自动停止录音
-    m_silenceTimer->start();
+    m_silencePollTimer->start();
+}
+
+/*处理捕获的音频数据（边录边检测静音）*/
+void Dialog::processCapturedAudio()
+{
+    if (!m_isSpeechRecording || !m_speechAudioDevice)
+        return;
+
+    while (m_speechAudioDevice->bytesAvailable() >= 3200)
+    {
+        QByteArray data = m_speechAudioDevice->read(3200);
+        m_capturedAudioData.append(data);
+
+        // 计算RMS，检测语音活动
+        const int16_t *raw =
+            reinterpret_cast<const int16_t *>(data.constData());
+        const int num = data.size() / 2;
+        double sumSq = 0.0;
+        for (int i = 0; i < num; ++i)
+        {
+            const double s = raw[i] / 32768.0;
+            sumSq += s * s;
+        }
+        const float rms =
+            num > 0 ? static_cast<float>(std::sqrt(sumSq / num)) : 0.0f;
+        if (rms > kSilenceThreshold)
+            m_silenceTimer->start(); // 有人说话，重置静音计时器
+    }
 }
 
 /*结束录音*/
 void Dialog::stopSpeechRecording()
 {
-    if (!m_isSpeechRecording || !m_speechRecorder)
+    if (!m_isSpeechRecording)
         return;
+
     m_silenceTimer->stop();
+    m_silencePollTimer->stop();
+
+    // 停止并销毁音频源
+    if (m_speechAudioSource)
+    {
+        m_speechAudioSource->stop();
+        delete m_speechAudioSource;
+        m_speechAudioSource = nullptr;
+        m_speechAudioDevice = nullptr;
+    }
+
+    m_isSpeechRecording = false;
+
+    // 没有捕获到有效音频（太短）
+    const int minBytes = 16000 * 2 * 1; // 至少1秒（16kHz, 16-bit, mono）
+    if (m_capturedAudioData.size() < minBytes)
+    {
+        m_capturedAudioData.clear();
+        ui->label_name->setText(QStringLiteral("你"));
+        return;
+    }
+
+    // 保存PCM到文件
+    QDir().mkpath(QFileInfo(speechRecordFilePath()).absolutePath());
+    QFile file(speechRecordFilePath());
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        m_capturedAudioData.clear();
+        return;
+    }
+    file.write(m_capturedAudioData);
+    file.close();
+    m_capturedAudioData.clear();
+
+    // 送百度识别
+    m_isSpeechRecognizing = true;
+    const QString recognizedText =
+        recognizeSpeechFromFile(speechRecordFilePath()).trimmed();
+    m_isSpeechRecognizing = false;
+
+    if (recognizedText.isEmpty())
+    {
+        ui->label_name->setText(QStringLiteral("你"));
+        return;
+    }
+
     ui->label_name->setText(QStringLiteral("你"));
-    m_speechRecorder->stop();
+    ui->textEdit->setEnabled(true);
+    ui->textEdit->setText(recognizedText);
+    if (ui->checkBox_autoInput->isChecked() || m_continuousMode)
+        submitCurrentInput();
+}
+
+/*连续对话模式：进入*/
+void Dialog::enterContinuousMode()
+{
+    m_continuousMode = true;
+    m_continuousSilenceTimer->start();
+    qDebug() << "Continuous conversation mode: entered";
+
+    // 如果AI刚回复完（输入框禁用中），先恢复输入状态
+    if (!ui->textEdit->isEnabled() && ui->pushButton_next->isVisible())
+    {
+        ui->textEdit->setEnabled(true);
+        ui->pushButton_next->hide();
+        ui->textEdit->clear();
+    }
+
+    // 自动开始第一轮录音
+    QMetaObject::invokeMethod(
+        this, [this]() { startSpeechRecordingFromHotkey(); },
+        Qt::QueuedConnection);
+}
+
+/*连续对话模式：退出*/
+void Dialog::exitContinuousMode()
+{
+    m_continuousMode = false;
+    m_continuousSilenceTimer->stop();
+    if (m_isSpeechRecording)
+        stopSpeechRecording();
+    qDebug() << "Continuous conversation mode: exited";
+}
+
+/*检查所有VITS音频是否播放完毕*/
+bool Dialog::isAllVitsDone() const
+{
+    return m_vitsReadyFiles.isEmpty() && !m_vitsRequestInFlight &&
+           (!m_vitsPlayer ||
+            m_vitsPlayer->playbackState() == QMediaPlayer::StoppedState);
 }
 
 /*录音文件路径*/
@@ -1326,7 +1565,7 @@ QString Dialog::recognizeSpeechFromFile(const QString &filePath)
 
     //沿用旧项目的百度短语音识别请求格式，直接提交 m4a 的 Base64 数据
     QJsonObject payload{
-        {"format", "m4a"},
+        {"format", "pcm"},
         {"rate", 16000},
         {"channel", 1},
         {"token", accessToken},
@@ -1373,30 +1612,50 @@ QString Dialog::recognizeSpeechFromFile(const QString &filePath)
 
 bool Dialog::handleSpeechHotkeyEvent(quint32 vkCode, bool isKeyDown, bool isKeyUp)
 {
-    if (!m_globalSpeechHotkeyEnabled || m_globalSpeechHotkeyNativeKey == 0)
-        return false;
-
-    //按下开始录音，重复KeyDown不重复启动。
-    if (isKeyDown && vkCode == m_globalSpeechHotkeyNativeKey)
+    // --- 连续对话模式快捷键（按下切换） ---
+    if (m_continuousHotkeyEnabled && vkCode == m_continuousHotkeyNativeKey)
     {
-        if (!m_globalSpeechHotkeyPressed)
+        if (isKeyDown)
         {
-            m_globalSpeechHotkeyPressed = true;
-            QMetaObject::invokeMethod(this, [this]()
-                                      { startSpeechRecordingFromHotkey(); }, Qt::QueuedConnection);
+            if (m_continuousMode)
+                exitContinuousMode();
+            else
+                enterContinuousMode();
         }
         return true;
     }
 
-    //松开同一个热键才停止录音，保持“长按说话”的交互。
-    if (m_globalSpeechHotkeyPressed &&
-        isKeyUp && vkCode == m_globalSpeechHotkeyNativeKey)
+    // --- 普通录音快捷键（按住说话） ---
+    if (!m_globalSpeechHotkeyEnabled || m_globalSpeechHotkeyNativeKey == 0)
+        return false;
+
+    if (vkCode != m_globalSpeechHotkeyNativeKey)
+        return false;
+
+    // 连续模式中忽略普通录音热键（由连续模式自己管理录音）
+    if (m_continuousMode)
+        return true;
+
+    // 按下开始录音
+    if (isKeyDown && !m_globalSpeechHotkeyPressed)
     {
-        m_globalSpeechHotkeyPressed = false;
-        QMetaObject::invokeMethod(this, [this]()
-                                  { stopSpeechRecording(); }, Qt::QueuedConnection);
+        m_globalSpeechHotkeyPressed = true;
+        QMetaObject::invokeMethod(this, [this]() {
+            startSpeechRecordingFromHotkey();
+        }, Qt::QueuedConnection);
         return true;
     }
+
+    // 松手停止录音
+    if (isKeyUp && m_globalSpeechHotkeyPressed)
+    {
+        m_globalSpeechHotkeyPressed = false;
+        QMetaObject::invokeMethod(this, [this]() {
+            stopSpeechRecording();
+        }, Qt::QueuedConnection);
+        return true;
+    }
+
     return false;
 }
 
@@ -1756,11 +2015,21 @@ QStringList Dialog::screenCaptureTriggerKeywords()
         QStringLiteral("帮我看看"),
         QStringLiteral("看看这个"),
         QStringLiteral("看下这个"),
+        QStringLiteral("看看这是什么"),
+        QStringLiteral("看看这是啥"),
+        QStringLiteral("看看我在干什么"),
+        QStringLiteral("看看我在干嘛"),
+        QStringLiteral("看这是什么"),
+        QStringLiteral("看这是啥"),
         QStringLiteral("截图"),
         QStringLiteral("屏幕截图"),
         QStringLiteral("截屏"),
         QStringLiteral("看屏幕"),
         QStringLiteral("帮我看看这个"),
+        QStringLiteral("你可以看看"),
+        QStringLiteral("瞧瞧屏幕"),
+        QStringLiteral("瞧瞧这个"),
+        QStringLiteral("看到什么"),
     };
 }
 

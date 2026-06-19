@@ -15,13 +15,11 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QSettings>
 
 #include <QAudioDevice>
-#include <QAudioInput>
 #include <QAudioOutput>
 #include <QAudioSource>
 #include <QBuffer>
@@ -31,7 +29,6 @@
 #include <QJsonDocument>
 #include <QTimer>
 #include <QMediaDevices>
-#include <QMediaFormat>
 #include <QMediaPlayer>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -355,16 +352,7 @@ Dialog::Dialog(QWidget *parent)
     ReloadSpeechInputConfig();
     initWakeWord();
 
-    // 静音检测定时器：4秒无声音自动停止录音
-    m_silenceTimer = new QTimer(this);
-    m_silenceTimer->setSingleShot(true);
-    m_silenceTimer->setInterval(kSilenceTimeoutMs);
-    connect(m_silenceTimer, &QTimer::timeout, this, [this]() {
-        qDebug() << "Silence timeout, auto-stopping recording";
-        stopSpeechRecording();
-    });
-
-    // 轮询定时器：每100ms读取音频+检测语音活动
+    // 轮询定时器：每100ms读取音频+检测语音活动，25帧(2.5秒)无声音自动停止
     m_silencePollTimer = new QTimer(this);
     m_silencePollTimer->setInterval(kSilencePollMs);
     connect(m_silencePollTimer, &QTimer::timeout, this, [this]() {
@@ -1195,7 +1183,6 @@ bool Dialog::doSubmitCurrentInput(const QString &userInput)
                        "快乐|今天的天气真好呀！|今日はいい天気ですね！\n"
                        "生气|为什么一直打扰我！|なんでずっと邪魔するの！");
         m_cachedSystemPrompt = systemPrompt;
-        m_cachedTachieNameList = nameListStr;
         m_cachedCharacterForPrompt = currentChar;
         m_memoryDirty = false;
         ai->setSystemPrompt(systemPrompt);
@@ -1356,40 +1343,12 @@ void Dialog::startSpeechRecordingFromHotkey()
 }
 
 /*处理捕获的音频数据（边录边检测静音）*/
-void Dialog::processCapturedAudio()
-{
-    if (!m_isSpeechRecording || !m_speechAudioDevice)
-        return;
-
-    while (m_speechAudioDevice->bytesAvailable() >= 3200)
-    {
-        QByteArray data = m_speechAudioDevice->read(3200);
-        m_capturedAudioData.append(data);
-
-        // 计算RMS，检测语音活动
-        const int16_t *raw =
-            reinterpret_cast<const int16_t *>(data.constData());
-        const int num = data.size() / 2;
-        double sumSq = 0.0;
-        for (int i = 0; i < num; ++i)
-        {
-            const double s = raw[i] / 32768.0;
-            sumSq += s * s;
-        }
-        const float rms =
-            num > 0 ? static_cast<float>(std::sqrt(sumSq / num)) : 0.0f;
-        if (rms > kSilenceThreshold)
-            m_silenceTimer->start(); // 有人说话，重置静音计时器
-    }
-}
-
 /*结束录音*/
 void Dialog::stopSpeechRecording()
 {
     if (!m_isSpeechRecording)
         return;
 
-    m_silenceTimer->stop();
     m_silencePollTimer->stop();
 
     // 停止并销毁音频源
@@ -1726,13 +1685,6 @@ void Dialog::loadMemory()
         m_memoryData = doc.object();
     else
         m_memoryData = QJsonObject();
-}
-
-/* 使系统提示词缓存失效（记忆或角色变更时调用） */
-void Dialog::invalidatePromptCache()
-{
-    m_cachedSystemPrompt.clear();
-    m_memoryDirty = false;
 }
 
 /* 保存记忆文件 */
@@ -2344,19 +2296,6 @@ void Dialog::startWakeWord()
     {
         connect(m_wakeWordDetector, &WakeWordDetector::wakeWordDetected,
                 this, &Dialog::onWakeWordDetected);
-        connect(m_wakeWordDetector, &WakeWordDetector::audioLevel,
-                this, [this](float rms) {
-                    if (!m_isSpeechRecording)
-                        return;
-                    // 录音中检测到语音活动则重置静音计时器
-                    if (rms > kSilenceThreshold)
-                    {
-                        qDebug() << "[SilenceDetect] speech rms:" << rms
-                                 << "> threshold:" << kSilenceThreshold
-                                 << "- resetting timer";
-                        m_silenceTimer->start();
-                    }
-                });
         m_wakeWordDetector->start();
         qDebug() << "Wake word detection started";
     }

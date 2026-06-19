@@ -2,16 +2,12 @@
 #define DIALOG_H
 
 #include "AiProvider.h"
-#include <QDate>
 #include <QEvent>
 #include <QJsonObject>
-#include <QMediaCaptureSession>
-#include <QMediaRecorder>
 #include <QMoveEvent>
 #include <QStringList>
 #include <QWidget>
 
-class QAudioInput;
 class QAudioOutput;
 class QAudioSource;
 class QMediaPlayer;
@@ -128,10 +124,8 @@ class Dialog : public QWidget
     QJsonObject m_memoryData;
     // 系统提示词缓存（避免每次发消息重复构建）
     QString m_cachedSystemPrompt;
-    QString m_cachedTachieNameList;
     QString m_cachedCharacterForPrompt;
     bool m_memoryDirty = true;
-    void invalidatePromptCache();
     void loadMemory();
     void saveMemory() const;
     QString buildMemoryContext() const;
@@ -144,7 +138,6 @@ class Dialog : public QWidget
     void startSpeechRecording();
     void startSpeechRecordingFromHotkey();
     void stopSpeechRecording();
-    void processCapturedAudio();
     QString speechRecordFilePath() const;
     QString recognizeSpeechFromFile(const QString &filePath);
     QString requestBaiduAccessToken(const QString &apiKey,
@@ -153,14 +146,12 @@ class Dialog : public QWidget
     // 语音唤醒
     WakeWordDetector *m_wakeWordDetector = nullptr;
     bool m_wakeWordEnabled = false;
-    // 静音检测：自动结束录音
-    QTimer *m_silenceTimer = nullptr;     // 4秒单次，超时触发停止
-    QTimer *m_silencePollTimer = nullptr; // 100ms轮询读取音频+算RMS
-    int m_silentFrameCount = 0;           // 连续静音帧计数
+    // 静音检测：100ms轮询+帧计数器，25帧(2.5秒)无声音自动停止录音
+    QTimer *m_silencePollTimer = nullptr;
+    int m_silentFrameCount = 0;
     static constexpr float kSilenceThreshold = 0.005f;
-    static constexpr int kSilenceTimeoutMs = 2500;
     static constexpr int kSilencePollMs = 100;
-    static constexpr int kSilenceFrameMax = 25;    // 25帧 * 100ms = 2.5秒
+    static constexpr int kSilenceFrameMax = 25;
     void initWakeWord();
     void startWakeWord();
     void stopWakeWord();

@@ -20,7 +20,6 @@
 
 namespace
 {
-#ifdef Q_OS_MACOS
 struct DefaultConfigEntry
 {
     const char *resourcePath;
@@ -92,7 +91,6 @@ void CopyDefaultConfigIfMissing()
         outFile.write(inFile.readAll());
     }
 }
-#endif
 } // namespace
 
 int main(int argc, char *argv[])
@@ -112,9 +110,7 @@ int main(int argc, char *argv[])
     textEditPalette.setColor(QPalette::PlaceholderText, QColor(120, 120, 120));
     QApplication::setPalette(textEditPalette, "QTextEdit");
 
-#ifdef Q_OS_MACOS
     CopyDefaultConfigIfMissing();
-#endif
     a.setQuitOnLastWindowClosed(false);
 
     QCoreApplication::setApplicationName("Mandarin");

@@ -2,7 +2,6 @@
 #include "./ui_setting.h"
 
 #include "child/settingchild_about.h"
-#include "child/settingchild_appLauncher.h"
 #include "child/settingchild_char.h"
 #include "child/settingchild_general.h"
 #include "child/settingchild_llm.h"
@@ -15,7 +14,7 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
     : ElaWindow(parent), ui(new Ui::MainWindow)
 {
     /*初始化窗口*/
-    setWindowTitle("Mandarin");
+    setWindowTitle("ZcChat2");
     setUserInfoCardVisible(false);
 
     /*创建窗口*/
@@ -32,11 +31,6 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
     SettingChild_Speech *settingchild_speechWin = new SettingChild_Speech(this);
     settingchild_speechWin->show();
     addPageNode("语音输入", settingchild_speechWin, ElaIconType::Microphone);
-
-    SettingChild_AppLauncher *settingchild_appLauncherWin =
-        new SettingChild_AppLauncher(this);
-    settingchild_appLauncherWin->show();
-    addPageNode("应用调用", settingchild_appLauncherWin, ElaIconType::Rocket);
 
     SettingChild_Vits *settingchild_vitsWin = new SettingChild_Vits(this);
     settingchild_vitsWin->show();
@@ -76,8 +70,6 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
             dialog, &Dialog::ReloadContinuousHotkeyConfig); //刷新连续对话配置
     connect(settingchild_generalWin, &SettingChild_General::generalConfigChanged,
             dialog, &Dialog::ReloadGeneralConfig); //刷新通用配置
-    connect(settingchild_appLauncherWin, &SettingChild_AppLauncher::appLauncherConfigChanged,
-            dialog, &Dialog::ReloadAppLauncherConfig); //刷新应用调用缓存
 }
 
 MainWindow::~MainWindow()

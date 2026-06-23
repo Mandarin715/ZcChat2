@@ -1,4 +1,0 @@
-C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/Mandarin.dir
-C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/INSTALL.dir
-C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/ALL_BUILD.dir
-C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/ZERO_CHECK.dir

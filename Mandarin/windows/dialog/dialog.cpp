@@ -17,7 +17,6 @@
 #include <QJsonArray>
 #include <QPainter>
 #include <QPainterPath>
-#include <QProcess>
 #include <QSettings>
 
 #include <QAudioDevice>
@@ -94,7 +93,9 @@ static int findNextSentenceEnd(const QString &text, int start)
         const QChar ch = text.at(i);
         if (ch == QChar('.') || ch == QChar('!') || ch == QChar('?') ||
             ch == QChar('\n') || ch == QStringLiteral("。").at(0) ||
-            ch == QStringLiteral("！").at(0) || ch == QStringLiteral("？").at(0))
+            ch == QStringLiteral("！").at(0) || ch == QStringLiteral("？").at(0) ||
+            ch == QStringLiteral("、").at(0) || ch == QStringLiteral("；").at(0) ||
+            ch == QChar(';'))
             return i;
     }
     return -1;
@@ -320,17 +321,20 @@ Dialog::Dialog(QWidget *parent)
                     }
                     tryStartNextVitsPlayback();
 
-                    // 全部VITS播完后等音频缓冲延迟，切回默认立绘（所有模式）
-                    const bool allDone = isAllVitsDone();
-                    if (allDone && !m_isSpeechRecording && !m_isSpeechRecognizing)
+                    // 连续对话模式：全部VITS播完后自动开始下一轮录音
+                    if (m_continuousMode)
                     {
-                        qDebug() << "VITS finished, resetting tachie after"
-                                 << m_continuousAudioDelayMs << "ms...";
-                        QTimer::singleShot(m_continuousAudioDelayMs, this, [this]() {
-                            emit requestSetCharTachie("default");
-                            // 连续对话模式：恢复输入状态并开始下一轮录音
-                            if (m_continuousMode)
-                            {
+                        const bool allDone = isAllVitsDone();
+                        qDebug() << "[Continuous] VITS stopped | allDone:" << allDone
+                                 << "| recording:" << m_isSpeechRecording
+                                 << "| recognizing:" << m_isSpeechRecognizing
+                                 << "| readyFiles:" << m_vitsReadyFiles.size()
+                                 << "| reqInFlight:" << m_vitsRequestInFlight;
+                        if (allDone && !m_isSpeechRecording && !m_isSpeechRecognizing)
+                        {
+                            qDebug() << "Continuous mode: VITS stopped, waiting"
+                                     << m_continuousAudioDelayMs << "ms...";
+                            QTimer::singleShot(m_continuousAudioDelayMs, this, [this]() {
                                 if (!ui->textEdit->isEnabled() && ui->pushButton_next->isVisible())
                                 {
                                     ui->textEdit->setEnabled(true);
@@ -338,8 +342,8 @@ Dialog::Dialog(QWidget *parent)
                                     ui->textEdit->clear();
                                 }
                                 startSpeechRecordingFromHotkey();
-                            }
-                        });
+                            });
+                        }
                     }
                 }
             });
@@ -414,7 +418,6 @@ Dialog::Dialog(QWidget *parent)
     });
 
     ReloadContinuousHotkeyConfig();
-    ReloadAppLauncherConfig();
     ReloadScreenCaptureConfig();
     loadContextHistory();
     loadMemory();
@@ -510,11 +513,6 @@ Dialog::Dialog(QWidget *parent)
                     }
                 }
                 emit requestSetCharTachie(mood); //提取心情并发出信号
-
-                // VITS播完后切回默认立绘；若VITS未播放则直接延时切回
-                if (isAllVitsDone())
-                    QTimer::singleShot(m_continuousAudioDelayMs, this,
-                                       [this]() { emit requestSetCharTachie("default"); });
 
                 //历史记录写入
                 const QString capturedUserInput = m_lastUserInput;
@@ -751,14 +749,6 @@ void Dialog::ReloadContinuousHotkeyConfig()
             SetWindowsHookExW(WH_KEYBOARD_LL, SpeechHotkeyHookProc, nullptr, 0);
     }
 #endif
-}
-
-/*重载应用调用配置（缓存关键词列表）*/
-void Dialog::ReloadAppLauncherConfig()
-{
-    ZcJsonLib config(JsonSettingPath);
-    m_cachedAppCommands =
-        config.value("appLauncher/commands", QJsonValue(QJsonArray())).toArray();
 }
 
 /*显示历史记录*/
@@ -1113,27 +1103,6 @@ bool Dialog::submitCurrentInput()
     // 连续对话模式：每次有效发言都重置2分钟静默计时器
     if (m_continuousMode)
         m_continuousSilenceTimer->start();
-
-    // 应用调用关键词检测（优先于AI对话和屏幕捕获，使用缓存避免每次读JSON）
-    {
-        const QString lowerInput = userInput.toLower();
-        for (const QJsonValue &val : m_cachedAppCommands)
-        {
-            const QJsonObject obj = val.toObject();
-            const QString keyword = obj.value("keyword").toString();
-            const QString path = obj.value("path").toString();
-            if (!keyword.isEmpty() && !path.isEmpty() &&
-                lowerInput.contains(keyword.toLower()))
-            {
-                qDebug() << "AppLauncher: launching" << path << "for keyword:" << keyword;
-                QProcess::startDetached(path, QStringList());
-                ui->textEdit->clear();
-                ui->textEdit->setEnabled(true);
-                ui->label_name->setText(QStringLiteral("你"));
-                return true;
-            }
-        }
-    }
 
     // 屏幕捕获关键词检测
     if (m_screenCaptureEnabled)

@@ -3,6 +3,7 @@
 
 #include "AiProvider.h"
 #include <QEvent>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QMoveEvent>
 #include <QStringList>
@@ -37,6 +38,7 @@ class Dialog : public QWidget
     void ReloadGeneralConfig();
     void ReloadSpeechInputConfig();
     void ReloadScreenCaptureConfig();
+    void ReloadAppLauncherConfig();
     void ReloadContinuousHotkeyConfig();
     bool handleSpeechHotkeyEvent(quint32 vkCode, bool isKeyDown, bool isKeyUp);
 
@@ -156,6 +158,8 @@ class Dialog : public QWidget
     void startWakeWord();
     void stopWakeWord();
     void onWakeWordDetected(const QString &keyword);
+    // 应用调用
+    QJsonArray m_cachedAppCommands;
     // 多模态屏幕捕获
     bool m_screenCaptureEnabled = false;
     bool m_visionInFlight = false;

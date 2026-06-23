@@ -17,6 +17,7 @@ vits-simple-api-windows-cpu-v0.6.16/
 
 # Build artifacts
 build/
+build2/
 dist/
 __pycache__/
 *.pyc

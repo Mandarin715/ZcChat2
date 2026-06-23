@@ -6,6 +6,7 @@
 #include "child/settingchild_general.h"
 #include "child/settingchild_llm.h"
 #include "child/settingchild_plugin.h"
+#include "child/settingchild_appLauncher.h"
 #include "child/settingchild_screenCapture.h"
 #include "child/settingchild_speech.h"
 #include "child/settingchild_vits.h"
@@ -31,6 +32,11 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
     SettingChild_Speech *settingchild_speechWin = new SettingChild_Speech(this);
     settingchild_speechWin->show();
     addPageNode("语音输入", settingchild_speechWin, ElaIconType::Microphone);
+
+    SettingChild_AppLauncher *settingchild_appLauncherWin =
+        new SettingChild_AppLauncher(this);
+    settingchild_appLauncherWin->show();
+    addPageNode("应用调用", settingchild_appLauncherWin, ElaIconType::Window);
 
     SettingChild_Vits *settingchild_vitsWin = new SettingChild_Vits(this);
     settingchild_vitsWin->show();
@@ -68,6 +74,9 @@ MainWindow::MainWindow(Dialog *dialog, Tachie *tachie, QWidget *parent)
             dialog, &Dialog::ReloadSpeechInputConfig); //刷新语音输入配置
     connect(settingchild_speechWin, &SettingChild_Speech::speechConfigChanged,
             dialog, &Dialog::ReloadContinuousHotkeyConfig); //刷新连续对话配置
+    connect(settingchild_appLauncherWin,
+            &SettingChild_AppLauncher::appLauncherConfigChanged,
+            dialog, &Dialog::ReloadAppLauncherConfig); //刷新应用调用配置
     connect(settingchild_generalWin, &SettingChild_General::generalConfigChanged,
             dialog, &Dialog::ReloadGeneralConfig); //刷新通用配置
 }

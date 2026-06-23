@@ -13,6 +13,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QPainter>
@@ -419,6 +420,7 @@ Dialog::Dialog(QWidget *parent)
 
     ReloadContinuousHotkeyConfig();
     ReloadScreenCaptureConfig();
+    ReloadAppLauncherConfig();
     loadContextHistory();
     loadMemory();
 
@@ -1124,6 +1126,27 @@ bool Dialog::submitCurrentInput()
             ui->textEdit->setText(QStringLiteral("正在分析屏幕内容……"));
             captureAndAnalyzeScreen();
             return true;
+        }
+    }
+
+    // 应用调用关键词检测
+    if (!m_cachedAppCommands.isEmpty())
+    {
+        const QString lowerInput = userInput.toLower();
+        for (const QJsonValue &val : m_cachedAppCommands)
+        {
+            const QJsonObject obj = val.toObject();
+            const QString keyword = obj.value("keyword").toString();
+            const QString path = obj.value("path").toString();
+            if (!keyword.isEmpty() && !path.isEmpty()
+                && lowerInput.contains(keyword.toLower()))
+            {
+                QProcess::startDetached(path, QStringList());
+                ui->textEdit->clear();
+                ui->textEdit->setEnabled(true);
+                ui->label_name->setText(QStringLiteral("你"));
+                return true;
+            }
         }
     }
 
@@ -1956,6 +1979,14 @@ void Dialog::ReloadScreenCaptureConfig()
 
     ui->pushButton_screenCapture->setVisible(m_screenCaptureEnabled);
     ui->pushButton_screenCapture->setEnabled(m_screenCaptureEnabled);
+}
+
+/*应用调用配置重载*/
+void Dialog::ReloadAppLauncherConfig()
+{
+    ZcJsonLib config(JsonSettingPath);
+    m_cachedAppCommands =
+        config.value("appLauncher/commands", QJsonArray()).toArray();
 }
 
 /*屏幕捕获触发关键词*/

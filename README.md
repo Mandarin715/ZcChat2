@@ -110,8 +110,6 @@
 
 | 项目 | 说明 |
 |------|------|
-| [Zao-chen/ZcChat2](https://github.com/Zao-chen/ZcChat2) | 上游原项目 |
-| [Zao-chen/ZcChat](https://github.com/Zao-chen/ZcChat) | 初代 AI 桌宠 |
 | [Zao-chen/ZcAILib](https://github.com/Zao-chen/ZcAILib) | 高性能 Qt AI 请求库 |
 | [Zao-chen/ZcWidgetTools](https://github.com/Zao-chen/ZcWidgetTools) | ElaWidgetTools 扩展 |
 | [Zao-chen/ZcJsonLib](https://github.com/Zao-chen/ZcJsonLib) | 轻量 JSON 键值库 |

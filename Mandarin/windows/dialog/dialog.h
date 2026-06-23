@@ -3,6 +3,7 @@
 
 #include "AiProvider.h"
 #include <QEvent>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QMoveEvent>
 #include <QStringList>
@@ -38,6 +39,7 @@ class Dialog : public QWidget
     void ReloadSpeechInputConfig();
     void ReloadScreenCaptureConfig();
     void ReloadContinuousHotkeyConfig();
+    void ReloadAppLauncherConfig();
     bool handleSpeechHotkeyEvent(quint32 vkCode, bool isKeyDown, bool isKeyUp);
 
   private slots:
@@ -103,6 +105,8 @@ class Dialog : public QWidget
     bool m_continuousHotkeyEnabled = false;
     quint32 m_continuousHotkeyNativeKey = 0;
     int m_continuousAudioDelayMs = 2500;
+    // 应用调用关键词缓存（避免每次对话都读JSON）
+    QJsonArray m_cachedAppCommands;
     bool m_continuousMode = false;
     QTimer *m_continuousSilenceTimer = nullptr;
     void enterContinuousMode();

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingChild_AppLauncher</class>
+ <widget class="QWidget" name="SettingChild_AppLauncher">
+  <layout class="QVBoxLayout" name="verticalLayout_main">
+   <property name="leftMargin">
+    <number>0</number>
+   </property>
+   <property name="topMargin">
+    <number>0</number>
+   </property>
+   <property name="rightMargin">
+    <number>0</number>
+   </property>
+   <property name="bottomMargin">
+    <number>0</number>
+   </property>
+   <item>
+    <widget class="ElaScrollPageArea" name="widget_header" native="true">
+     <layout class="QVBoxLayout" name="verticalLayout_header">
+      <item>
+       <widget class="ElaText" name="label_title">
+        <property name="font">
+         <font>
+          <pointsize>14</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>应用调用设置</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="ElaText" name="label_hint">
+        <property name="text">
+         <string>对话中说出关键词即可打开对应文件或应用（匹配命中后不发送给AI）</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QScrollArea" name="scrollArea_commands">
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="widget_commandsContainer">
+      <layout class="QVBoxLayout" name="verticalLayout_commands">
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="ElaScrollPageArea" name="widget_addButton" native="true">
+     <layout class="QHBoxLayout" name="horizontalLayout_add">
+      <item>
+       <widget class="QPushButton" name="pushButton_add">
+        <property name="text">
+         <string>＋ 添加应用</string>
+        </property>
+        <property name="minimumHeight">
+         <number>36</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_add">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="verticalSpacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+</ui>

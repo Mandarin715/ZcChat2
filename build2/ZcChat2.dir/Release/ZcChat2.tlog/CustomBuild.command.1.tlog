@@ -1,0 +1,36 @@
+^C:\USERS\ASUS\DESKTOP\CODE\PET1.0\BUILD2\CMAKEFILES\DBBB80E236ED6C70BCD2F1DBC79DF3C6\AUTOUIC_(CONFIG).STAMP.RULE
+setlocal
+cd C:\Users\asus\Desktop\code\pet1.0\build2
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\ASUS\DESKTOP\CODE\PET1.0\BUILD2\CMAKEFILES\98E60CA59A7BD40CF763651653F744A7\QRC_RES.CPP.RULE
+setlocal
+cd C:\Users\asus\Desktop\code\pet1.0\build2
+if %errorlevel% neq 0 goto :cmEnd
+C:
+if %errorlevel% neq 0 goto :cmEnd
+"C:\Program Files\CMake\bin\cmake.exe" -E cmake_autorcc C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/ZcChat2_autogen.dir/AutoRcc_res_EWIEGA46WW_Info.json Release
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
+^C:\USERS\ASUS\DESKTOP\CODE\PET1.0\ZCCHAT2\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/asus/Desktop/code/pet1.0/ZcChat2 -BC:/Users/asus/Desktop/code/pet1.0/build2 --check-stamp-file C:/Users/asus/Desktop/code/pet1.0/build2/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

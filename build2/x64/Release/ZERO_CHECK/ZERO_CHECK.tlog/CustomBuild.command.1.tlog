@@ -1,0 +1,10 @@
+^C:\USERS\ASUS\DESKTOP\CODE\PET1.0\BUILD2\CMAKEFILES\504845A63AC6756A0BD8DE9A99D848D7\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/asus/Desktop/code/pet1.0/ZcChat2 -BC:/Users/asus/Desktop/code/pet1.0/build2 --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/asus/Desktop/code/pet1.0/build2/Mandarin.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

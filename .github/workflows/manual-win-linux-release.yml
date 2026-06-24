@@ -71,7 +71,7 @@ jobs:
 
           # 默认配置
           New-Item -ItemType Directory -Force "$dist\.config\Mandarin" | Out-Null
-          Copy-Item Mandarin\res\default_config\ZcChat2\* "$dist\.config\Mandarin" -Recurse -Force
+          Copy-Item Mandarin\res\default_config\Mandarin\* "$dist\.config\Mandarin" -Recurse -Force
 
           # 打包
           $zipName = "Mandarin-${{ inputs.tag_name }}-portable.zip"

@@ -8,7 +8,7 @@
 - **对话记忆功能**：AI 自动从对话中提取用户个人信息和求助记录，持久化存储并在后续对话中注入上下文
   - `extractAndStoreMemory()`：异步调用 AI 提取对话中的记忆信息（个人信息、求助摘要），不阻塞主界面
   - `buildMemoryContext()`：将记忆数据构建为上下文文本，注入系统提示词
-  - `loadMemory()` / `saveMemory()`：记忆文件的读写，存储路径为 `Documents/ZcChat2/Character/UserConfig/<角色名>/memory.json`
+  - `loadMemory()` / `saveMemory()`：记忆文件的读写，存储路径为 `Documents/Mandarin/Character/UserConfig/<角色名>/memory.json`
 - 记忆数据包含两类：`personal_info`（用户个人信息键值对）和 `help_summaries`（历史求助摘要，保留最近20条）
 
 ### 修复

@@ -220,6 +220,14 @@ jobs:
           New-Item -ItemType Directory -Force "dist\.config\Mandarin" | Out-Null
           Copy-Item "res\default_config\ZcChat2\*" "dist\.config\Mandarin" -Recurse -Force
 
+      #复制启动脚本
+      - name: Copy launcher script
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if(!(Test-Path "启动.bat")){ throw "Not found: 启动.bat" }
+          Copy-Item "启动.bat" "dist\" -Force
+
       - name: Install Inno Setup
         if: matrix.os == 'windows-latest'
         shell: pwsh

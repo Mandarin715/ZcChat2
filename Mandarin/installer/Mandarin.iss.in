@@ -20,6 +20,9 @@ Name: "chinesesimp"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "{#MyAppPath}\Mandarin.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+;启动脚本
+Source: "{#MyAppPath}\启动.bat"; DestDir: "{app}"; Flags: ignoreversion
+
 ;dist根目录dll
 Source: "{#MyAppPath}\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#MyAppPath}\**\*.dll"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist

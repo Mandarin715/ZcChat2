@@ -41,7 +41,7 @@ jobs:
       - name: Configure
         shell: pwsh
         run: |
-          cmake -S ZcChat2 -B build -G Ninja `
+          cmake -S Mandarin -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_PREFIX_PATH="$env:Qt6_DIR"
 
@@ -62,16 +62,16 @@ jobs:
           & "$qtBin\windeployqt.exe" --release --compiler-runtime "$dist\Mandarin.exe"
 
           # 第三方 dll
-          Get-ChildItem -Path ZcChat2\3rdparty -Recurse -File -Filter *.dll |
+          Get-ChildItem -Path Mandarin\3rdparty -Recurse -File -Filter *.dll |
             Where-Object { $_.FullName -match "(\\|/)bin(\\|/)" } |
             ForEach-Object { Copy-Item $_.FullName "$dist\" -Force }
 
           # 启动脚本
-          Copy-Item ZcChat2\启动.bat $dist\ -Force
+          Copy-Item Mandarin\启动.bat $dist\ -Force
 
           # 默认配置
           New-Item -ItemType Directory -Force "$dist\.config\Mandarin" | Out-Null
-          Copy-Item ZcChat2\res\default_config\ZcChat2\* "$dist\.config\Mandarin" -Recurse -Force
+          Copy-Item Mandarin\res\default_config\Mandarin\* "$dist\.config\Mandarin" -Recurse -Force
 
           # 打包
           $zipName = "Mandarin-${{ inputs.tag_name }}-portable.zip"

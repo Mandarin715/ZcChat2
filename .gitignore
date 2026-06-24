@@ -41,3 +41,6 @@ moc_*.cpp
 ui_*.h
 qrc_*.cpp
 _temp_bak/
+_temp_bak/
+实验报告*.docx
+~.docx

@@ -13,6 +13,13 @@ for /d %%d in ("vits-simple-api*") do (
         set "VITS_DIR=%%d"
     )
 )
+if "%VITS_DIR%"=="" (
+    for /d %%d in ("..\vits-simple-api*") do (
+        if exist "%%d\py310\python.exe" (
+            set "VITS_DIR=%%d"
+        )
+    )
+)
 
 if "%VITS_DIR%"=="" (
     echo [INFO] Voice service not found, text-only mode.

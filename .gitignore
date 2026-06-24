@@ -40,3 +40,4 @@ Thumbs.db
 moc_*.cpp
 ui_*.h
 qrc_*.cpp
+_temp_bak/

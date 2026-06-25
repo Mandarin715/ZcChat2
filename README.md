@@ -8,7 +8,7 @@
 
 🌟 一个模仿 Galgame 演出效果的 AI 桌宠
 
-<img width="1045" height="593" alt="screenshot" src="https://github.com/user-attachments/assets/49439b92-308f-4ecd-b8cc-a1538153752c" />
+<img width="678" height="591" alt="屏幕截图 2026-06-25 170727" src="https://github.com/user-attachments/assets/bb3da77c-8959-4417-ad09-e27dde804561" />
 
 [![GitHub Release](https://img.shields.io/github/v/release/Mandarin715/Mandarin?color=22c55e&style=for-the-badge)](https://github.com/Mandarin715/Mandarin/releases)
 

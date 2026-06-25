@@ -65,7 +65,7 @@
 
 1. 下载 [vits-simple-api](https://github.com/Artrajz/vits-simple-api/releases)（Windows CPU 版本）
 2. 解压到 Mandarin 安装目录（保留原文件夹名，如 `vits-simple-api-windows-cpu-v0.6.16`）
-3. 在 [Release](https://github.com/Mandarin715/Mandarin/releases) 下载 `SomeGalActor_Vits.zip`（语音模型）
+3. 在 [Release](https://github.com/Mandarin715/Mandarin/releases) （1.6.1版本及以前）下载 `SomeGalActor_Vits.zip`（语音模型）
 4. 解压到刚才的 vits-simple-api 文件夹下的 `models/SomeGalActor_Vits/`
 5. 双击 `启动.bat`，脚本自动检测并开启语音模式
 
@@ -77,7 +77,7 @@
 
 ### Step 4：导入角色
 
-1. 在 [Release](https://github.com/Mandarin715/Mandarin/releases) 下载角色包（如 Atri.zip）
+1. 在 [Release](https://github.com/Mandarin715/Mandarin/releases) （1.6.1版本及以前）下载角色包（如 Atri.zip）
 2. 设置 → 角色设置 → 导入
 
 > 更多角色可在 [Discussions](https://github.com/Mandarin715/Mandarin/discussions) 分享和获取
@@ -90,7 +90,7 @@
 
 - **提交 PR** — 改进代码、修复 Bug、新增功能
 - **报告问题** — 通过 [Issues](https://github.com/Mandarin715/Mandarin/issues) 提交 Bug 或功能建议
-- **分享角色** — 在 [Discussions](https://github.com/Zao-chen/ZcChat2/discussions/categories/%E8%A7%92%E8%89%B2%E5%88%86%E4%BA%AB) 分享自创角色
+- **分享角色** — 在 [Discussions](https://github.com/Mandarin715/Mandarin/discussions)分享自创角色
 - **Star ⭐** — 觉得有用就点个 Star 吧
 
 ---

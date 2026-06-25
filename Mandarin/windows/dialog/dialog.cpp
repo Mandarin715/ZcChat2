@@ -1428,6 +1428,8 @@ void Dialog::stopSpeechRecording()
     {
         m_capturedAudioData.clear();
         ui->label_name->setText(QStringLiteral("你"));
+        if (m_continuousMode)
+            QTimer::singleShot(500, this, &Dialog::startSpeechRecordingFromHotkey);
         return;
     }
 
@@ -1452,6 +1454,8 @@ void Dialog::stopSpeechRecording()
     if (recognizedText.isEmpty())
     {
         ui->label_name->setText(QStringLiteral("你"));
+        if (m_continuousMode)
+            QTimer::singleShot(500, this, &Dialog::startSpeechRecordingFromHotkey);
         return;
     }
 

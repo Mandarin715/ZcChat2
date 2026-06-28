@@ -1,9 +1,3 @@
-[README.md](https://github.com/user-attachments/files/28984655/README.md)
-<!--
-  注意：这是 Mandarin（原名 ZcChat2）的个人分支版本，由 Mandarin715 维护。
-  原项目地址：https://github.com/Zao-chen/ZcChat2
--->
-
 # Mandarin — AI 桌面宠物
 
 🌟 一个模仿 Galgame 演出效果的 AI 桌宠
